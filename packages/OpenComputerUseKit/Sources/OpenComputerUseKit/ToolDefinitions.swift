@@ -70,11 +70,13 @@ public enum ToolDefinitions {
         ),
         ToolDefinition(
             name: "get_app_state",
-            description: "Start an app use session if needed, then get the state of the app's key window and return a screenshot and accessibility tree. This must be called once per assistant turn before interacting with the app. This tool is part of plugin `Computer Use`.",
+            description: "Start an app use session if needed, then get the state of the app's key window and return accessibility evidence plus an optional screenshot. Call this once per assistant turn before interacting. On follow-up checks fully supported by semantic role, value, selected state, text, focus, list change, or document URL, set disable_screenshot=true; retain screenshots for visual ambiguity or coordinate work. This tool is part of plugin `Computer Use`.",
             annotations: readOnlyAnnotations(),
             inputSchema: objectSchema(
                 properties: [
                     "app": stringProperty(description: "App name or bundle identifier"),
+                    "disableDiff": booleanProperty(description: "Return the full accessibility tree instead of a diff from the previous get_app_state call. Defaults to false."),
+                    "disable_screenshot": booleanProperty(description: "Return only accessibility text without a screenshot when semantic role, value, selection, text, focus, list-change, or URL evidence is sufficient. Defaults to false."),
                     "text_limit": textLimitProperty(description: "Maximum text characters to return. Use \"max\" for full text. Defaults to 500."),
                     "max_tree_nodes": positiveIntegerProperty(description: "Maximum accessibility tree nodes to render. Defaults to 1200."),
                     "max_tree_depth": positiveIntegerProperty(description: "Maximum accessibility tree depth to render. Defaults to 64."),
@@ -205,6 +207,13 @@ private func integerProperty(description: String) -> [String: Any] {
     ]
 }
 
+
+private func booleanProperty(description: String) -> [String: Any] {
+    [
+        "type": "boolean",
+        "description": description,
+    ]
+}
 private func positiveIntegerProperty(description: String) -> [String: Any] {
     [
         "type": "integer",

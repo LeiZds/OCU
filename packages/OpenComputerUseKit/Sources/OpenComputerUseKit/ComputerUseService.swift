@@ -1824,7 +1824,7 @@ public final class ComputerUseService {
     private func snapshotResult(for snapshot: AppSnapshot, style: SnapshotTextStyle) -> ToolCallResult {
         var content = [ToolResultContentItem.text(snapshot.renderedText(style: style))]
         if let screenshotPNGData = snapshot.screenshotPNGData {
-            content.append(.pngImage(screenshotPNGData))
+            content.append(.jpegImage(screenshotPNGData))
         }
         return ToolCallResult(content: content)
     }

@@ -210,7 +210,7 @@ enum SnapshotBuilder {
         treeLimits: AccessibilityTreeLimits
     ) -> AppSnapshot {
         let windowBounds = windowCapture.bounds
-        let screenshotPNGData = windowCapture.pngDataIfAvailable()
+        let screenshotPNGData = windowCapture.jpegDataIfAvailable()
         let focusedElement = preferredFocusedElement(appElement: appElement, appPID: app.pid, focusedApplication: focusedApplication, systemWide: systemWide)
         let selectedText = focusedElement.flatMap { copySelectedText($0, textLimit: textLimit) }
         let context = RenderContext(
@@ -222,10 +222,14 @@ enum SnapshotBuilder {
 
         var renderer = TreeRenderer(context: context)
         renderer.render(rootElement)
-        if let menuBar = copyElement(appElement, attribute: kAXMenuBarAttribute),
-           !CFEqual(menuBar, rootElement)
-        {
-            renderer.render(menuBar)
+        // P4 fix: Do not render menu bar in snapshot.
+        // Codex CU consistently excludes menu bar items; exposing them
+        // causes element index instability between calls.
+        // Menu bar access is still available through dedicated
+        // kAXMenuBarAttribute querying if needed.
+
+        if renderer.wasTruncated {
+            renderer.lines.append("... (showing 0-\(renderer.nextIndex - 1) of \(renderer.nextIndex)+ elements, increase max_tree_nodes for more)")
         }
 
         return AppSnapshot(
@@ -479,13 +483,13 @@ private struct WindowCapture {
             ?? 1
     }
 
-    func pngDataIfAvailable() -> Data? {
+    func jpegDataIfAvailable() -> Data? {
         guard let image else {
             return nil
         }
-
-        return boundedScreenshotPNGData(for: image)
+        return boundedScreenshotJPEGData(for: image)
     }
+
 }
 
 struct WindowCaptureCandidate {
@@ -529,7 +533,7 @@ func preferredWindowCaptureCandidate(_ candidates: [WindowCaptureCandidate], tit
     return hinted
 }
 
-func boundedScreenshotPNGData(
+func boundedScreenshotJPEGData(
     for image: CGImage,
     maxBytes: Int = screenshotResultMaxPNGBytes,
     maxDimension: CGFloat = screenshotResultMaxDimension,
@@ -539,7 +543,7 @@ func boundedScreenshotPNGData(
         return nil
     }
 
-    let original = pngData(for: image)
+    let original = jpegData(for: image)
     let largestDimension = CGFloat(max(image.width, image.height))
     var scale = min(1, maxDimension / largestDimension)
 
@@ -550,7 +554,7 @@ func boundedScreenshotPNGData(
     var best = original
     while scale >= minScale {
         guard let resized = resizedCGImage(image, scale: scale),
-              let data = pngData(for: resized)
+              let data = jpegData(for: resized)
         else {
             break
         }
@@ -566,9 +570,9 @@ func boundedScreenshotPNGData(
     return best
 }
 
-private func pngData(for image: CGImage) -> Data? {
+private func jpegData(for image: CGImage, quality: CGFloat = 0.85) -> Data? {
     let bitmap = NSBitmapImageRep(cgImage: image)
-    return bitmap.representation(using: .png, properties: [:])
+    return bitmap.representation(using: .jpeg, properties: [.compressionFactor: quality])
 }
 
 private func resizedCGImage(_ image: CGImage, scale: CGFloat) -> CGImage? {
@@ -660,6 +664,7 @@ private struct TreeRenderer {
     var records: [Int: ElementRecord] = [:]
     var identifierIndex: [String: String] = [:]
     var focusedSummary: String?
+    var wasTruncated: Bool = false
 
     init(context: RenderContext) {
         self.context = context
@@ -667,6 +672,7 @@ private struct TreeRenderer {
 
     mutating func render(_ root: AXUIElement, depth: Int = 0, ancestors: [AXUIElement] = []) {
         guard shouldContinueRendering(nextIndex: nextIndex, depth: depth, limits: context.treeLimits) else {
+            wasTruncated = true
             return
         }
 
@@ -972,6 +978,18 @@ func shouldContinueRendering(
     nextIndex < limits.maxNodeCount && depth < limits.maxDepth
 }
 
+private let settableRoles: Set<String> = [
+    kAXTextFieldRole as String,
+    kAXTextAreaRole as String,
+    kAXComboBoxRole as String,
+    kAXSliderRole as String,
+    kAXIncrementorRole as String,
+    kAXLevelIndicatorRole as String,
+    kAXColorWellRole as String,
+    kAXDateFieldRole as String,
+    kAXPopoverRole as String,
+]
+
 private func summarizeTraits(of element: AXUIElement) -> [String] {
     var values: [String] = []
 
@@ -987,7 +1005,8 @@ private func summarizeTraits(of element: AXUIElement) -> [String] {
         values.append("disabled")
     }
 
-    if isSettable(of: element, attribute: kAXValueAttribute) {
+    let role = attributeValue(of: element, attribute: kAXRoleAttribute) as? String ?? ""
+    if settableRoles.contains(role), isSettable(of: element, attribute: kAXValueAttribute) {
         values.append("settable")
     }
 
@@ -1355,7 +1374,13 @@ private func formattedURLSegment(
         return ""
     }
 
-    return ", URL: \(url)"
+    var normalizedURL = url
+    if normalizedURL.hasPrefix("https://") {
+        normalizedURL = String(normalizedURL.dropFirst(8))
+    } else if normalizedURL.hasPrefix("http://") {
+        normalizedURL = String(normalizedURL.dropFirst(7))
+    }
+    return ", URL: \(normalizedURL)"
 }
 
 private func urlValue(
@@ -1633,7 +1658,7 @@ func shouldMergeTextOnlySiblings(_ texts: [String]) -> Bool {
     }
 
     let totalLength = texts.reduce(0) { $0 + $1.count }
-    return texts.count <= 8 && totalLength <= 220
+    return texts.count <= 20 && totalLength <= 1000
 }
 
 private func isSiblingCounterText(_ text: String) -> Bool {
