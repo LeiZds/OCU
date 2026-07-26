@@ -215,3 +215,5 @@ Bindings（只保存组合特例）
 - 2026-07-26：旧全局 npm OCU、旧 Claude MCP/Skill 和旧 Codex 缓存已停止并移入废纸篓；含未提交修改的源码目录只解除运行引用，不直接删除。
 - 2026-07-26：后续 GitHub 更新直接提交和推送，不创建 PR。
 - 2026-07-26：冻结的 V1.0 通过二进制、Skill 双 SHA-256 和 MCP 握手三重校验；旧 dev 的 5330 字符截断记录不得再归因于 GitHub V1.0。
+- 2026-07-26：Codex 配对运行器已覆盖 `list-apps` 与 `fixture-basic`。两组首个有效配对均双边通过；`fixture-basic` 两边都是 `get_app_state → set_value → click → get_app_state`。当前样本仅作描述，不用于宣称统计等价。
+- 2026-07-26：无效预检确认两个测试约束：`--ignore-user-config` 会让官方 Computer Use 不可用；裸 Swift fixture 不具备稳定 macOS app 身份。运行器现保留同一用户 Harness 配置，并把 fixture 包装成固定 bundle ID 的 `.app`。

@@ -2,8 +2,9 @@ PROJECT ?=
 SLUG ?=
 AGENTS ?= claude,codex
 SCENARIO ?= list-apps
+RUNS ?= 1
 
-.PHONY: init build app test smoke stress agent-smoke baseline-v1 check-docs check-repo ci release-package npm-build npm-publish new-history new-plan
+.PHONY: init build app test smoke stress agent-smoke baseline-v1 codex-ab check-docs check-repo ci release-package npm-build npm-publish new-history new-plan
 
 init:
 	@if [ -z "$(PROJECT)" ]; then echo "用法: make init PROJECT=项目名"; exit 1; fi
@@ -29,6 +30,9 @@ agent-smoke:
 
 baseline-v1:
 	node ./scripts/check-ocu-v1-baseline.mjs
+
+codex-ab:
+	node ./scripts/run-codex-computer-use-ab.mjs --scenario=$(SCENARIO) --repetitions=$(RUNS)
 
 check-docs:
 	./scripts/check-docs.sh

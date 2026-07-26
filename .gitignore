@@ -4,6 +4,7 @@
 .swiftpm/
 .gemini/
 artifacts/codex-dumps/
+artifacts/harness-ab/runs/
 research/
 __pycache__/
 *.pyc
