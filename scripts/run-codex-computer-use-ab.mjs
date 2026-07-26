@@ -52,12 +52,32 @@ const runId =
   options.get("run-id") ?? new Date().toISOString().replace(/[:.]/g, "-");
 const outputDir = path.join(repoRoot, "artifacts/harness-ab/runs", runId);
 const baselineLauncher = path.join(repoRoot, "scripts/run-ocu-v1-baseline.sh");
+const officialBaselinePath = path.join(
+  repoRoot,
+  "tests/harness/baselines/codex-official-1.0.1000502.json",
+);
+const officialBaseline = JSON.parse(readFileSync(officialBaselinePath, "utf8"));
+const officialSkillPath = expandHomePath(officialBaseline.skillPath);
+const officialPluginRoot = path.dirname(path.dirname(path.dirname(officialSkillPath)));
+const officialWrapperPath = path.join(
+  officialPluginRoot,
+  "scripts/computer-use-client.mjs",
+);
 const fixtureBundleIdentifier = "dev.opencomputeruse.fixture.ab";
 const fixtureAppName = "CodexABFixture";
+const fixtureAppPath = path.join(
+  repoRoot,
+  `.build/ab-fixtures/${fixtureAppName}.app`,
+);
 mkdirSync(outputDir, { recursive: true });
 
 if (!existsSync(baselineLauncher)) {
   fail(`Missing V1.0 launcher: ${baselineLauncher}`);
+}
+if (!existsSync(officialSkillPath) || !existsSync(officialWrapperPath)) {
+  fail(
+    `Missing pinned Codex official Computer Use ${officialBaseline.version} at ${officialPluginRoot}.`,
+  );
 }
 
 const results = [];
@@ -145,7 +165,7 @@ const report = {
     platform: process.platform,
     architecture: process.arch,
     configIsolation: {
-      official: "normal user config; required to expose bundled Computer Use",
+      official: `normal user config for node_repl; pinned Computer Use ${officialBaseline.version} wrapper path is supplied in the prompt`,
       ocu: "--ignore-user-config plus only the frozen OCU MCP override",
     },
     fixtureMode: scenario === "list-apps"
@@ -188,6 +208,12 @@ function nonNegativeInteger(raw, name) {
   return value;
 }
 
+function expandHomePath(value) {
+  if (value === "~") return os.homedir();
+  if (value.startsWith("~/")) return path.join(os.homedir(), value.slice(2));
+  return value;
+}
+
 function codexSpec({ arm, prompt }) {
   const args = ["exec"];
   if (arm === "official") {
@@ -226,11 +252,15 @@ function codexSpec({ arm, prompt }) {
 
 function makePrompt({ arm, scenario: scenarioId, expectedValue }) {
   const backend = arm === "official"
-    ? "Use only the Codex official computer-use skill through node_repl and sky. Do not use open-computer-use MCP or any other UI backend"
+    ? [
+      "Use only the Codex official computer-use runtime through node_repl and sky. Do not use open-computer-use MCP or any other UI backend",
+      `In node_repl initialize it exactly with: if (!globalThis.sky) { const { setupComputerUseRuntime } = await import(${JSON.stringify(officialWrapperPath)}); await setupComputerUseRuntime({ globals: globalThis }); }`,
+    ].join(". ")
     : "Use only open-computer-use MCP tools. Do not use node_repl, terminal, shell, browser, file, or any other tool";
+  const appReference = arm === "official" ? fixtureAppPath : fixtureBundleIdentifier;
   const stateRead = arm === "ocu"
-    ? `Call get_app_state for app ${fixtureBundleIdentifier} with disable_screenshot=true`
-    : `Call get_app_state for app ${fixtureBundleIdentifier}`;
+    ? `Call get_app_state for app ${appReference} with disable_screenshot=true`
+    : `Call get_app_state for app ${appReference}`;
   if (scenarioId === "list-apps") {
     const finalText = arm === "official"
       ? "OFFICIAL_CU_AGENT_OK"
@@ -255,7 +285,7 @@ function makePrompt({ arm, scenario: scenarioId, expectedValue }) {
   if (scenarioId === "focus-unicode") {
     const initialValue = `${expectedValue}-中文🙂é`;
     return [
-      `${backend}. Operate the local app ${fixtureAppName}, bundle identifier ${fixtureBundleIdentifier}.`,
+      `${backend}. Operate the local app ${fixtureAppName}; its test reference is ${appReference}.`,
       `${stateRead}.`,
       `Use set_value to set the text field exactly to ${JSON.stringify(initialValue)}.`,
       "Click that text field using the integer element_index from the latest state so it has focus.",
@@ -266,7 +296,7 @@ function makePrompt({ arm, scenario: scenarioId, expectedValue }) {
   }
   if (scenarioId === "long-page-scroll") {
     return [
-      `${backend}. Operate the local app ${fixtureAppName}, bundle identifier ${fixtureBundleIdentifier}.`,
+      `${backend}. Operate the local app ${fixtureAppName}; its test reference is ${appReference}.`,
       `${stateRead}.`,
       "In the returned accessibility text, locate the scroll area whose ID is fixture-scroll-view.",
       "Use the integer element index shown at the start of that current row as scroll.element_index; never pass the ID string as element_index.",
@@ -276,7 +306,7 @@ function makePrompt({ arm, scenario: scenarioId, expectedValue }) {
     ].join(" ");
   }
   return [
-    `${backend}. Operate the local app ${fixtureAppName}, bundle identifier ${fixtureBundleIdentifier}.`,
+    `${backend}. Operate the local app ${fixtureAppName}; its test reference is ${appReference}.`,
     `${stateRead}.`,
     `Use set_value to set the text field exactly to ${JSON.stringify(expectedValue)}.`,
     "Click the Increment Counter button exactly once using the integer element_index from the latest state.",

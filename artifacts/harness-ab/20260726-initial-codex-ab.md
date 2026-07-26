@@ -10,16 +10,18 @@ OCU V1.0 在两个首轮场景中均完成任务，且 `fixture-basic` 与 Codex
 | --- | ---: | ---: | --- | --- |
 | `list-apps` | 通过，80.391 秒 | 通过，26.512 秒 | `list_apps` | 双边通过 |
 | `fixture-basic`（桥接预检） | 通过，69.369 秒 | 通过，31.634 秒 | `get_app_state → set_value → click → get_app_state` | 双边完成，但 OCU 触发专用桥；不计入 Runtime 性能结论 |
+| `fixture-basic`（固定官方 wrapper、真实 AX） | 通过，35.766 秒 | 通过，37.335 秒 | `get_app_state → set_value → click → get_app_state` | 严格基础能力配对通过；OCU 额外返回约 102,944 字节图片 Base64 |
 
 耗时包含模型、Harness、Skill 发现和工具调用的完整任务时间，不等同于 Runtime 单动作延迟。样本中官方 A 组消耗了更多时间和上下文，主要因为新 Codex CLI 任务对官方 Skill 的发现与装载路径存在波动；后续需要单独采集 Runtime 延迟，不能把这部分全部归因于官方 Computer Use。
 
-配置限制：官方 Computer Use 只有在正常用户配置下才能暴露；OCU 使用 `--ignore-user-config` 加唯一冻结 MCP 入口，避免多插件工具面导致候选工具偶发不注入。因此当前总耗时和 Token 不是严格单变量 A/B，只能作 Harness 产品路径描述；功能任务仍使用相同 Codex 版本、默认模型、提示意图、app、初态和外部完成判断。
+配置限制：官方 Computer Use 的 `node_repl` 只有在正常用户配置下才能暴露；为排除 Skill 发现波动，严格配对在提示中固定已冻结的官方 `1.0.1000502` wrapper 路径。OCU 使用 `--ignore-user-config` 加唯一冻结 MCP 入口，避免多插件工具面污染。因此总耗时和 Token 仍不是完全相同的 Harness 注入路径，只用于描述产品路径；功能任务使用相同 Codex 版本、默认模型、提示意图、app、初态和外部完成判断。
 
 ## 无效预检（不计入成功率）
 
 - 使用 `--ignore-user-config` 时，Codex CLI 没有暴露官方 Computer Use；运行器已改为两边共用正常用户 Harness 配置，只在 B 组禁用官方插件并注入冻结 OCU。
 - 裸 `OpenComputerUseFixture` 可执行文件无法被官方 Runtime 稳定识别为 macOS app；运行器已将其包装为固定 bundle ID 的 `.app`，并在每个 arm 前重新启动和清零。
 - `.app` 初版仍使用 `OpenComputerUseFixture` 名称，会让 OCU 自动进入仓库专用 `FixtureBridge`，而官方走真实 UI；现改名为 `CodexABFixture`，保留外部真值文件，但禁用这一隐式快路径。
+- 一次严格基础配对中，官方 `node_repl` 已出现但 bundled Skill 路径未注入，150 秒都用于寻找 `sky`，没有发生 Computer Use 动作；该样本归类为官方 Harness 装载无效样本。运行器随后固定官方版本与 wrapper 路径，重跑后 4 步通过。
 
 ## 当前差距
 
@@ -39,7 +41,7 @@ OCU V1.0 在两个首轮场景中均完成任务，且 `fixture-basic` 与 Codex
 `long-page-scroll` 的真实 AX 单样本结果：
 
 - OCU V1.0：任务完成，外部真值从 `Scroll offset: 0` 变为 `Scroll offset: 138`；耗时约 78.027 秒。模型先重复调用 3 次无效 `scroll`，随后尝试 2 次失败的 secondary action、1 次失败的 `set_value`，最后通过滚动条控件点击完成；原始轨迹共 12 次工具尝试，说明结果正确但恢复路径明显膨胀。
-- Codex 官方：180 秒超时，3 次 `scroll` 均未改变外部滚动偏移；共识别到 9 次 Computer Use 调用。该结果说明官方与 OCU 对同一个自定义 AX 滚动区采用的后备路径不同，不用于外推普通网页或原生长页面的整体优劣。
+- Codex 官方：固定官方 wrapper 后仍在 120 秒超时，2 次直接 `scroll`、1 次 secondary action 和其他恢复尝试均未改变外部滚动偏移；共识别到 13 次 Computer Use 尝试。该结果说明官方与 OCU 对同一个自定义 AX 滚动区采用的后备路径不同，不用于外推普通网页或原生长页面的整体优劣。
 - 两组提示、应用、初态和外部完成判断一致；官方需要正常用户配置才能暴露 bundled Computer Use，OCU 使用隔离配置，因此跨 Harness 总时长和 Token 仍只作描述。
 
 ## 资源与截图缺口
