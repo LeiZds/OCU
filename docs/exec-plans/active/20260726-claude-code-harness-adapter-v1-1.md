@@ -217,3 +217,5 @@ Bindings（只保存组合特例）
 - 2026-07-26：冻结的 V1.0 通过二进制、Skill 双 SHA-256 和 MCP 握手三重校验；旧 dev 的 5330 字符截断记录不得再归因于 GitHub V1.0。
 - 2026-07-26：Codex 配对运行器已覆盖 `list-apps` 与 `fixture-basic`。两组首个有效配对均双边通过；`fixture-basic` 两边都是 `get_app_state → set_value → click → get_app_state`。当前样本仅作描述，不用于宣称统计等价。
 - 2026-07-26：无效预检确认两个测试约束：`--ignore-user-config` 会让官方 Computer Use 不可用；裸 Swift fixture 不具备稳定 macOS app 身份。运行器现保留同一用户 Harness 配置，并把 fixture 包装成固定 bundle ID 的 `.app`。
+- 2026-07-27：配对运行器增加基础设施无效样本重试、真实 AX 长页面滚动场景，以及工具结果文本/图片传输量记录。OCU 单样本完成滚动但需要 12 次工具尝试；官方单样本 180 秒超时且滚动偏移未改变。该结果只用于定位恢复路径，不作整体优劣结论。
+- 2026-07-27：确认 V1.0 的 `disable_screenshot` 只存在于 Schema，执行分发层未读取；直接调用和 Agent 轨迹都证明即使传 `true` 仍返回 JPEG。该缺口列为 V1.1 P0 性能修复。

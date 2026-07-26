@@ -20,6 +20,10 @@ const options = parseArgs(process.argv.slice(2));
 const scenario = options.get("scenario") ?? "list-apps";
 const repetitions = positiveInteger(options.get("repetitions") ?? "1", "repetitions");
 const timeoutMs = positiveInteger(options.get("timeout-ms") ?? "180000", "timeout-ms");
+const invalidRetries = nonNegativeInteger(
+  options.get("invalid-retries") ?? "1",
+  "invalid-retries",
+);
 const requestedArms = (options.get("arms") ?? "official,ocu")
   .split(",")
   .map((value) => value.trim())
@@ -28,12 +32,13 @@ const supportedScenarios = new Set([
   "list-apps",
   "fixture-basic",
   "focus-unicode",
+  "long-page-scroll",
 ]);
 const supportedArms = new Set(["official", "ocu"]);
 
 if (!supportedScenarios.has(scenario)) {
   fail(
-    `Unsupported scenario: ${scenario}. Use list-apps, fixture-basic, or focus-unicode.`,
+    `Unsupported scenario: ${scenario}. Use list-apps, fixture-basic, focus-unicode, or long-page-scroll.`,
   );
 }
 if (
@@ -62,52 +67,65 @@ for (let repetition = 1; repetition <= repetitions; repetition += 1) {
     : [...requestedArms].reverse();
   for (const arm of armOrder) {
     const expectedValue = `AB-FIXTURE-${String(repetition).padStart(2, "0")}`;
-    const fixture = scenario === "list-apps" ? null : await startFixture();
-    try {
-      const prompt = makePrompt({ arm, scenario, expectedValue });
-      const processResult = await runProcess(codexSpec({ arm, prompt }));
-      const parsed = parseCodexEvents(processResult.stdout, arm);
-      if (fixture) await delay(650);
-      const fixtureState = fixture ? readFixtureState() : null;
-      const validation = validateRun({
-        arm,
-        scenario,
-        expectedValue,
-        processResult,
-        parsed,
-        fixtureState,
-      });
-      const result = {
-        repetition,
-        arm,
-        scenario,
-        valid: validation.valid,
-        success: validation.success,
-        taskCompleted: validation.taskCompleted,
-        methodConformance: validation.methodConformance,
-        failures: validation.failures,
-        durationMs: processResult.durationMs,
-        exitCode: processResult.code,
-        timedOut: processResult.timedOut,
-        toolCalls: parsed.toolCalls,
-        actionCalls: parsed.toolCalls.filter(
-          (tool) => tool !== "get_app_state" && tool !== "list_apps",
-        ),
-        stateReads: parsed.toolCalls.filter((tool) => tool === "get_app_state").length,
-        usage: parsed.usage,
-        finalText: parsed.finalText,
-        fixtureEvidence: summarizeFixture(fixtureState),
-      };
-      results.push(result);
-      const stem = `${String(repetition).padStart(2, "0")}-${arm}`;
-      writeFileSync(path.join(outputDir, `${stem}.stdout.jsonl`), processResult.stdout);
-      writeFileSync(path.join(outputDir, `${stem}.stderr.log`), processResult.stderr);
-      process.stdout.write(
-        `${arm} run ${repetition}: ${!result.valid ? "INVALID" : result.success ? "PASS" : "FAIL"} ` +
-          `(${result.durationMs}ms, tools=${result.toolCalls.join(",") || "none"})\n`,
-      );
-    } finally {
-      await stopFixture(fixture);
+    for (let attempt = 1; attempt <= invalidRetries + 1; attempt += 1) {
+      const fixture = scenario === "list-apps" ? null : await startFixture();
+      let result;
+      try {
+        const prompt = makePrompt({ arm, scenario, expectedValue });
+        const processResult = await runProcess(codexSpec({ arm, prompt }));
+        const parsed = parseCodexEvents(processResult.stdout, arm);
+        if (fixture) await delay(650);
+        const fixtureState = fixture ? readFixtureState() : null;
+        const validation = validateRun({
+          arm,
+          scenario,
+          expectedValue,
+          processResult,
+          parsed,
+          fixtureState,
+        });
+        result = {
+          repetition,
+          attempt,
+          arm,
+          scenario,
+          valid: validation.valid,
+          success: validation.success,
+          taskCompleted: validation.taskCompleted,
+          methodConformance: validation.methodConformance,
+          failures: validation.failures,
+          durationMs: processResult.durationMs,
+          exitCode: processResult.code,
+          timedOut: processResult.timedOut,
+          transportOutputBytes: Buffer.byteLength(processResult.stdout),
+          toolResultTextBytes: parsed.toolResultTextBytes,
+          toolResultImageBase64Bytes: parsed.toolResultImageBase64Bytes,
+          toolCalls: parsed.toolCalls,
+          successfulToolCalls: parsed.successfulToolCalls,
+          failedToolCalls: parsed.failedToolCalls,
+          actionCalls: parsed.toolCalls.filter(
+            (tool) => tool !== "get_app_state" && tool !== "list_apps",
+          ),
+          stateReads: parsed.successfulToolCalls.filter(
+            (tool) => tool === "get_app_state"
+          ).length,
+          usage: parsed.usage,
+          finalText: parsed.finalText,
+          fixtureEvidence: summarizeFixture(fixtureState),
+        };
+        results.push(result);
+        const stem = `${String(repetition).padStart(2, "0")}-${arm}-attempt-${String(attempt).padStart(2, "0")}`;
+        writeFileSync(path.join(outputDir, `${stem}.stdout.jsonl`), processResult.stdout);
+        writeFileSync(path.join(outputDir, `${stem}.stderr.log`), processResult.stderr);
+        process.stdout.write(
+          `${arm} run ${repetition} attempt ${attempt}: ` +
+            `${!result.valid ? "INVALID" : result.success ? "PASS" : "FAIL"} ` +
+            `(${result.durationMs}ms, tools=${result.toolCalls.join(",") || "none"})\n`,
+        );
+      } finally {
+        await stopFixture(fixture);
+      }
+      if (result.valid) break;
     }
   }
 }
@@ -120,11 +138,16 @@ const report = {
   scenario,
   repetitions,
   armOrderPolicy: "official-first on odd runs, reversed on even runs",
+  invalidRetryPolicy: `retry infrastructure-invalid runs up to ${invalidRetries} time(s)`,
   environment: {
     codexVersion: commandOutput("codex", ["--version"]),
     harnessCommit: commandOutput("git", ["rev-parse", "HEAD"]),
     platform: process.platform,
     architecture: process.arch,
+    configIsolation: {
+      official: "normal user config; required to expose bundled Computer Use",
+      ocu: "--ignore-user-config plus only the frozen OCU MCP override",
+    },
     fixtureMode: scenario === "list-apps"
       ? null
       : "real Accessibility path; app name differs from OCU FixtureBridge.appName",
@@ -157,24 +180,38 @@ function positiveInteger(raw, name) {
   return value;
 }
 
+function nonNegativeInteger(raw, name) {
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) {
+    fail(`--${name} must be a non-negative integer.`);
+  }
+  return value;
+}
+
 function codexSpec({ arm, prompt }) {
-  const args = [
-    "exec",
-    "--ignore-rules",
-    "--ephemeral",
-    "--skip-git-repo-check",
-    "--dangerously-bypass-approvals-and-sandbox",
-    "--disable",
-    "image_generation",
-    "--json",
-  ];
+  const args = ["exec"];
   if (arm === "official") {
     args.push(
+      "--ignore-rules",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "--dangerously-bypass-approvals-and-sandbox",
+      "--disable",
+      "image_generation",
+      "--json",
       "-c",
       'plugins."computer-use@openai-bundled".enabled=true',
     );
   } else {
     args.push(
+      "--ignore-user-config",
+      "--skip-git-repo-check",
+      "--dangerously-bypass-approvals-and-sandbox",
+      "--disable",
+      "image_generation",
+      "--disable",
+      "js_repl",
+      "--json",
       "-c",
       'plugins."computer-use@openai-bundled".enabled=false',
       "-c",
@@ -189,43 +226,63 @@ function codexSpec({ arm, prompt }) {
 
 function makePrompt({ arm, scenario: scenarioId, expectedValue }) {
   const backend = arm === "official"
-    ? "只使用 Codex 官方 computer-use 技能，并按技能要求通过 node_repl 调用 sky；不要使用 open-computer-use MCP"
-    : "只使用 open-computer-use MCP；不要使用 node_repl、shell、浏览器或其他工具";
+    ? "Use only the Codex official computer-use skill through node_repl and sky. Do not use open-computer-use MCP or any other UI backend"
+    : "Use only open-computer-use MCP tools. Do not use node_repl, terminal, shell, browser, file, or any other tool";
+  const stateRead = arm === "ocu"
+    ? `Call get_app_state for app ${fixtureBundleIdentifier} with disable_screenshot=true`
+    : `Call get_app_state for app ${fixtureBundleIdentifier}`;
   if (scenarioId === "list-apps") {
     const finalText = arm === "official"
       ? "OFFICIAL_CU_AGENT_OK"
       : "OCU_V1_AGENT_OK";
-    return `${backend}。调用 list_apps 恰好一次，不做截图和任何修改。完成后只回复 ${finalText}。`;
+    return [
+      `${backend}.`,
+      "Call list_apps exactly once. Do not capture a screenshot or change anything.",
+      `After the tool call, reply exactly ${finalText}.`,
+    ].join(" ");
   }
   const finalText = arm === "official"
     ? scenarioId === "focus-unicode"
       ? "OFFICIAL_CU_UNICODE_OK"
+      : scenarioId === "long-page-scroll"
+        ? "OFFICIAL_CU_SCROLL_OK"
       : "OFFICIAL_CU_FIXTURE_OK"
     : scenarioId === "focus-unicode"
       ? "OCU_V1_UNICODE_OK"
+      : scenarioId === "long-page-scroll"
+        ? "OCU_V1_SCROLL_OK"
       : "OCU_V1_FIXTURE_OK";
   if (scenarioId === "focus-unicode") {
     const initialValue = `${expectedValue}-中文🙂é`;
     return [
-      `${backend}。`,
-      `操作本机应用 ${fixtureAppName}，bundle identifier 是 ${fixtureBundleIdentifier}。`,
-      "先读取最新状态。",
-      `使用 set_value 把文本框精确设置为 ${initialValue}。`,
-      "按 element_index 点击该文本框，使它获得焦点。",
-      "使用 type_text 追加精确文本 ｜追加。",
-      `再次读取状态，只有看到文本框精确等于 ${initialValue}｜追加，且 Counter 仍为 0，才能判断完成。`,
-      `完成后只回复 ${finalText}。`,
-    ].join("");
+      `${backend}. Operate the local app ${fixtureAppName}, bundle identifier ${fixtureBundleIdentifier}.`,
+      `${stateRead}.`,
+      `Use set_value to set the text field exactly to ${JSON.stringify(initialValue)}.`,
+      "Click that text field using the integer element_index from the latest state so it has focus.",
+      `Use type_text to append exactly ${JSON.stringify("｜追加")}.`,
+      `${stateRead} again. Only finish after the text field is exactly ${JSON.stringify(`${initialValue}｜追加`)} and Counter is still 0.`,
+      `Reply exactly ${finalText}.`,
+    ].join(" ");
+  }
+  if (scenarioId === "long-page-scroll") {
+    return [
+      `${backend}. Operate the local app ${fixtureAppName}, bundle identifier ${fixtureBundleIdentifier}.`,
+      `${stateRead}.`,
+      "In the returned accessibility text, locate the scroll area whose ID is fixture-scroll-view.",
+      "Use the integer element index shown at the start of that current row as scroll.element_index; never pass the ID string as element_index.",
+      "Call scroll with direction down and pages 1.",
+      `${stateRead} again. Only finish after Scroll offset is no longer 0.`,
+      `Reply exactly ${finalText}.`,
+    ].join(" ");
   }
   return [
-    `${backend}。`,
-    `操作本机应用 ${fixtureAppName}，bundle identifier 是 ${fixtureBundleIdentifier}。`,
-    "先读取最新状态。",
-    `把文本框的值精确设置为 ${expectedValue}。`,
-    "按 element_index 语义点击 Increment Counter 按钮恰好一次。",
-    "再次读取状态，只有看到文本值正确且 Counter 为 1 才能判断完成。",
-    `完成后只回复 ${finalText}。`,
-  ].join("");
+    `${backend}. Operate the local app ${fixtureAppName}, bundle identifier ${fixtureBundleIdentifier}.`,
+    `${stateRead}.`,
+    `Use set_value to set the text field exactly to ${JSON.stringify(expectedValue)}.`,
+    "Click the Increment Counter button exactly once using the integer element_index from the latest state.",
+    `${stateRead} again. Only finish after the text field is correct and Counter is 1.`,
+    `Reply exactly ${finalText}.`,
+  ].join(" ");
 }
 
 function runProcess(spec) {
@@ -283,9 +340,13 @@ function runProcess(spec) {
 
 function parseCodexEvents(stdout, arm) {
   const toolCalls = [];
+  const successfulToolCalls = [];
+  const failedToolCalls = [];
   const callRecords = [];
   let usage = null;
   let finalText = "";
+  let toolResultTextBytes = 0;
+  let toolResultImageBase64Bytes = 0;
   for (const line of stdout.split(/\n+/).filter(Boolean)) {
     let event;
     try {
@@ -304,15 +365,24 @@ function parseCodexEvents(stdout, arm) {
     }
     if (
       event.type !== "item.completed" ||
-      event.item?.type !== "mcp_tool_call" ||
-      event.item?.status !== "completed"
+      event.item?.type !== "mcp_tool_call"
     ) {
       continue;
     }
     if (arm === "ocu" && event.item.server === "open-computer-use") {
+      const completed = event.item.status === "completed";
+      const resultContent = event.item.result?.content ?? [];
+      toolResultTextBytes += resultContent
+        .filter((item) => item?.type === "text" && typeof item.text === "string")
+        .reduce((sum, item) => sum + Buffer.byteLength(item.text), 0);
+      toolResultImageBase64Bytes += resultContent
+        .filter((item) => item?.type === "image" && typeof item.data === "string")
+        .reduce((sum, item) => sum + Buffer.byteLength(item.data), 0);
       toolCalls.push(event.item.tool);
+      (completed ? successfulToolCalls : failedToolCalls).push(event.item.tool);
       callRecords.push({
         tools: [event.item.tool],
+        completed,
         resultText: resultTextFrom(event.item.result),
       });
       continue;
@@ -328,16 +398,27 @@ function parseCodexEvents(stdout, arm) {
       )].map((match) => match[1]);
       for (const tool of recordTools) {
         toolCalls.push(tool);
+        (event.item.status === "completed" ? successfulToolCalls : failedToolCalls).push(tool);
       }
       if (recordTools.length > 0) {
         callRecords.push({
           tools: recordTools,
+          completed: event.item.status === "completed",
           resultText: resultTextFrom(event.item.result),
         });
       }
     }
   }
-  return { toolCalls, callRecords, usage, finalText };
+  return {
+    toolCalls,
+    successfulToolCalls,
+    failedToolCalls,
+    callRecords,
+    usage,
+    finalText,
+    toolResultTextBytes,
+    toolResultImageBase64Bytes,
+  };
 }
 
 function validateRun({
@@ -374,23 +455,27 @@ function validateRun({
     ? arm === "official" ? "OFFICIAL_CU_AGENT_OK" : "OCU_V1_AGENT_OK"
     : scenarioId === "focus-unicode"
       ? arm === "official" ? "OFFICIAL_CU_UNICODE_OK" : "OCU_V1_UNICODE_OK"
+      : scenarioId === "long-page-scroll"
+        ? arm === "official" ? "OFFICIAL_CU_SCROLL_OK" : "OCU_V1_SCROLL_OK"
       : arm === "official" ? "OFFICIAL_CU_FIXTURE_OK" : "OCU_V1_FIXTURE_OK";
   if (parsed.finalText.trim() !== expectedFinal) {
     methodFailures.push(`unexpected final response: ${parsed.finalText.trim()}`);
   }
   if (scenarioId === "list-apps") {
-    const count = parsed.toolCalls.filter((tool) => tool === "list_apps").length;
+    const count = parsed.successfulToolCalls.filter((tool) => tool === "list_apps").length;
     if (count !== 1) taskFailures.push(`expected one list_apps call, saw ${count}`);
   } else {
     const requiredTools = scenarioId === "focus-unicode"
       ? ["get_app_state", "set_value", "click", "type_text"]
-      : ["get_app_state", "set_value", "click"];
+      : scenarioId === "long-page-scroll"
+        ? ["get_app_state", "scroll"]
+        : ["get_app_state", "set_value", "click"];
     for (const required of requiredTools) {
-      if (!parsed.toolCalls.includes(required)) {
+      if (!parsed.successfulToolCalls.includes(required)) {
         methodFailures.push(`missing ${required} call`);
       }
     }
-    if (parsed.toolCalls.filter((tool) => tool === "get_app_state").length < 2) {
+    if (parsed.successfulToolCalls.filter((tool) => tool === "get_app_state").length < 2) {
       methodFailures.push("missing post-action state verification");
     }
     const input = fixtureState?.elements?.find(
@@ -401,13 +486,13 @@ function validateRun({
     )?.value;
     const expectedInput = scenarioId === "focus-unicode"
       ? `${expectedValue}-中文🙂é｜追加`
-      : expectedValue;
+      : scenarioId === "long-page-scroll" ? "seed" : expectedValue;
     if (input !== expectedInput) {
       taskFailures.push(
         `fixture input mismatch: expected ${expectedInput}, got ${input}`,
       );
     }
-    const expectedCounter = scenarioId === "focus-unicode"
+    const expectedCounter = scenarioId === "focus-unicode" || scenarioId === "long-page-scroll"
       ? "Counter: 0"
       : "Counter: 1";
     if (counter !== expectedCounter) {
@@ -417,18 +502,26 @@ function validateRun({
     }
     if (scenarioId === "focus-unicode") {
       const typeTextRecordIndex = parsed.callRecords.findIndex((record) =>
-        record.tools.includes("type_text")
+        record.completed && record.tools.includes("type_text")
       );
       const firstVerification = typeTextRecordIndex === -1
         ? null
         : parsed.callRecords
           .slice(typeTextRecordIndex)
-          .find((record) => record.tools.includes("get_app_state"));
+          .find((record) => record.completed && record.tools.includes("get_app_state"));
       if (!firstVerification?.resultText.includes(expectedInput)) {
         methodFailures.push(
           "type_text did not produce the expected text at the first post-action verification",
         );
       }
+    }
+    if (
+      scenarioId === "long-page-scroll" &&
+      fixtureState?.elements?.find(
+        (element) => element.identifier === "fixture-scroll-status",
+      )?.value === "Scroll offset: 0"
+    ) {
+      taskFailures.push("fixture scroll offset remained 0");
     }
   }
   return {
@@ -449,6 +542,7 @@ function summarizeFixture(state) {
     focusedIdentifier: state.focusedIdentifier,
     input: byId["fixture-input"],
     counter: byId["fixture-counter-label"],
+    scroll: byId["fixture-scroll-status"],
   };
 }
 

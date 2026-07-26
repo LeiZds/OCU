@@ -13,6 +13,8 @@ OCU V1.0 在两个首轮场景中均完成任务，且 `fixture-basic` 与 Codex
 
 耗时包含模型、Harness、Skill 发现和工具调用的完整任务时间，不等同于 Runtime 单动作延迟。样本中官方 A 组消耗了更多时间和上下文，主要因为新 Codex CLI 任务对官方 Skill 的发现与装载路径存在波动；后续需要单独采集 Runtime 延迟，不能把这部分全部归因于官方 Computer Use。
 
+配置限制：官方 Computer Use 只有在正常用户配置下才能暴露；OCU 使用 `--ignore-user-config` 加唯一冻结 MCP 入口，避免多插件工具面导致候选工具偶发不注入。因此当前总耗时和 Token 不是严格单变量 A/B，只能作 Harness 产品路径描述；功能任务仍使用相同 Codex 版本、默认模型、提示意图、app、初态和外部完成判断。
+
 ## 无效预检（不计入成功率）
 
 - 使用 `--ignore-user-config` 时，Codex CLI 没有暴露官方 Computer Use；运行器已改为两边共用正常用户 Harness 配置，只在 B 组禁用官方插件并注入冻结 OCU。
@@ -34,11 +36,25 @@ OCU V1.0 在两个首轮场景中均完成任务，且 `fixture-basic` 与 Codex
 - 两边都表现出焦点恢复成本高；该结果用于定位“焦点可观测性和输入恢复”问题，不据单样本宣称 OCU 整体优于官方。
 - 一次 Codex 子任务未注入 OCU MCP，归类为 Harness 基础设施无效样本，不计入插件成功率。
 
+`long-page-scroll` 的真实 AX 单样本结果：
+
+- OCU V1.0：任务完成，外部真值从 `Scroll offset: 0` 变为 `Scroll offset: 138`；耗时约 78.027 秒。模型先重复调用 3 次无效 `scroll`，随后尝试 2 次失败的 secondary action、1 次失败的 `set_value`，最后通过滚动条控件点击完成；原始轨迹共 12 次工具尝试，说明结果正确但恢复路径明显膨胀。
+- Codex 官方：180 秒超时，3 次 `scroll` 均未改变外部滚动偏移；共识别到 9 次 Computer Use 调用。该结果说明官方与 OCU 对同一个自定义 AX 滚动区采用的后备路径不同，不用于外推普通网页或原生长页面的整体优劣。
+- 两组提示、应用、初态和外部完成判断一致；官方需要正常用户配置才能暴露 bundled Computer Use，OCU 使用隔离配置，因此跨 Harness 总时长和 Token 仍只作描述。
+
+## 资源与截图缺口
+
+V1.0 的 `get_app_state` Schema 声明了 `disable_screenshot`，但执行分发层没有读取该参数。使用冻结二进制直接调用 `get_app_state({app:"TextEdit", disable_screenshot:true})` 的实测结果仍包含 JPEG：总输出 43,201 字节，其中图片 Base64 41,164 字节，耗时约 4.189 秒。
+
+在 `long-page-scroll` 的 OCU 有效样本中，模型每次都传入 `disable_screenshot=true`，Runtime 仍累计返回约 185,976 字节的图片 Base64，Codex 任务累计输入 Token 约 660,856。该数字是 Harness 的累计计量，不等同于单轮上下文窗口，但足以证明无用截图会显著放大传输和处理成本。V1.1 必须让该参数真正生效，并增加回归测试。
+
 ## 运行方式
 
 ```bash
 make codex-ab SCENARIO=list-apps RUNS=1
 make codex-ab SCENARIO=fixture-basic RUNS=1
+make codex-ab SCENARIO=focus-unicode RUNS=1
+make codex-ab SCENARIO=long-page-scroll RUNS=1
 make surface-parity
 ```
 

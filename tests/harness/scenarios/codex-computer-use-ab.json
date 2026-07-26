@@ -44,7 +44,7 @@
     },
     {
       "id": "long-page-scroll",
-      "status": "planned",
+      "status": "automated",
       "risk": "local reversible fixture",
       "purpose": "Scroll direction, virtualized content, and incremental state."
     },
