@@ -24,11 +24,17 @@ const requestedArms = (options.get("arms") ?? "official,ocu")
   .split(",")
   .map((value) => value.trim())
   .filter(Boolean);
-const supportedScenarios = new Set(["list-apps", "fixture-basic"]);
+const supportedScenarios = new Set([
+  "list-apps",
+  "fixture-basic",
+  "focus-unicode",
+]);
 const supportedArms = new Set(["official", "ocu"]);
 
 if (!supportedScenarios.has(scenario)) {
-  fail(`Unsupported scenario: ${scenario}. Use list-apps or fixture-basic.`);
+  fail(
+    `Unsupported scenario: ${scenario}. Use list-apps, fixture-basic, or focus-unicode.`,
+  );
 }
 if (
   requestedArms.length === 0 ||
@@ -42,6 +48,7 @@ const runId =
 const outputDir = path.join(repoRoot, "artifacts/harness-ab/runs", runId);
 const baselineLauncher = path.join(repoRoot, "scripts/run-ocu-v1-baseline.sh");
 const fixtureBundleIdentifier = "dev.opencomputeruse.fixture.ab";
+const fixtureAppName = "CodexABFixture";
 mkdirSync(outputDir, { recursive: true });
 
 if (!existsSync(baselineLauncher)) {
@@ -55,11 +62,12 @@ for (let repetition = 1; repetition <= repetitions; repetition += 1) {
     : [...requestedArms].reverse();
   for (const arm of armOrder) {
     const expectedValue = `AB-FIXTURE-${String(repetition).padStart(2, "0")}`;
-    const fixture = scenario === "fixture-basic" ? await startFixture() : null;
+    const fixture = scenario === "list-apps" ? null : await startFixture();
     try {
       const prompt = makePrompt({ arm, scenario, expectedValue });
       const processResult = await runProcess(codexSpec({ arm, prompt }));
       const parsed = parseCodexEvents(processResult.stdout, arm);
+      if (fixture) await delay(650);
       const fixtureState = fixture ? readFixtureState() : null;
       const validation = validateRun({
         arm,
@@ -73,7 +81,10 @@ for (let repetition = 1; repetition <= repetitions; repetition += 1) {
         repetition,
         arm,
         scenario,
+        valid: validation.valid,
         success: validation.success,
+        taskCompleted: validation.taskCompleted,
+        methodConformance: validation.methodConformance,
         failures: validation.failures,
         durationMs: processResult.durationMs,
         exitCode: processResult.code,
@@ -92,7 +103,7 @@ for (let repetition = 1; repetition <= repetitions; repetition += 1) {
       writeFileSync(path.join(outputDir, `${stem}.stdout.jsonl`), processResult.stdout);
       writeFileSync(path.join(outputDir, `${stem}.stderr.log`), processResult.stderr);
       process.stdout.write(
-        `${arm} run ${repetition}: ${result.success ? "PASS" : "FAIL"} ` +
+        `${arm} run ${repetition}: ${!result.valid ? "INVALID" : result.success ? "PASS" : "FAIL"} ` +
           `(${result.durationMs}ms, tools=${result.toolCalls.join(",") || "none"})\n`,
       );
     } finally {
@@ -114,6 +125,9 @@ const report = {
     harnessCommit: commandOutput("git", ["rev-parse", "HEAD"]),
     platform: process.platform,
     architecture: process.arch,
+    fixtureMode: scenario === "list-apps"
+      ? null
+      : "real Accessibility path; app name differs from OCU FixtureBridge.appName",
   },
   results,
   summary: summarizeResults(results),
@@ -184,11 +198,28 @@ function makePrompt({ arm, scenario: scenarioId, expectedValue }) {
     return `${backend}。调用 list_apps 恰好一次，不做截图和任何修改。完成后只回复 ${finalText}。`;
   }
   const finalText = arm === "official"
-    ? "OFFICIAL_CU_FIXTURE_OK"
-    : "OCU_V1_FIXTURE_OK";
+    ? scenarioId === "focus-unicode"
+      ? "OFFICIAL_CU_UNICODE_OK"
+      : "OFFICIAL_CU_FIXTURE_OK"
+    : scenarioId === "focus-unicode"
+      ? "OCU_V1_UNICODE_OK"
+      : "OCU_V1_FIXTURE_OK";
+  if (scenarioId === "focus-unicode") {
+    const initialValue = `${expectedValue}-中文🙂é`;
+    return [
+      `${backend}。`,
+      `操作本机应用 ${fixtureAppName}，bundle identifier 是 ${fixtureBundleIdentifier}。`,
+      "先读取最新状态。",
+      `使用 set_value 把文本框精确设置为 ${initialValue}。`,
+      "按 element_index 点击该文本框，使它获得焦点。",
+      "使用 type_text 追加精确文本 ｜追加。",
+      `再次读取状态，只有看到文本框精确等于 ${initialValue}｜追加，且 Counter 仍为 0，才能判断完成。`,
+      `完成后只回复 ${finalText}。`,
+    ].join("");
+  }
   return [
     `${backend}。`,
-    `操作本机应用 OpenComputerUseFixture，bundle identifier 是 ${fixtureBundleIdentifier}。`,
+    `操作本机应用 ${fixtureAppName}，bundle identifier 是 ${fixtureBundleIdentifier}。`,
     "先读取最新状态。",
     `把文本框的值精确设置为 ${expectedValue}。`,
     "按 element_index 语义点击 Increment Counter 按钮恰好一次。",
@@ -252,6 +283,7 @@ function runProcess(spec) {
 
 function parseCodexEvents(stdout, arm) {
   const toolCalls = [];
+  const callRecords = [];
   let usage = null;
   let finalText = "";
   for (const line of stdout.split(/\n+/).filter(Boolean)) {
@@ -279,6 +311,10 @@ function parseCodexEvents(stdout, arm) {
     }
     if (arm === "ocu" && event.item.server === "open-computer-use") {
       toolCalls.push(event.item.tool);
+      callRecords.push({
+        tools: [event.item.tool],
+        resultText: resultTextFrom(event.item.result),
+      });
       continue;
     }
     if (
@@ -287,15 +323,21 @@ function parseCodexEvents(stdout, arm) {
       event.item.tool === "js"
     ) {
       const code = event.item.arguments?.code ?? "";
-      const matches = code.matchAll(
+      const recordTools = [...code.matchAll(
         /\bsky\.(click|drag|get_app_state|list_apps|perform_secondary_action|press_key|scroll|select_text|set_value|type_text)\s*\(/g,
-      );
-      for (const match of matches) {
-        toolCalls.push(match[1]);
+      )].map((match) => match[1]);
+      for (const tool of recordTools) {
+        toolCalls.push(tool);
+      }
+      if (recordTools.length > 0) {
+        callRecords.push({
+          tools: recordTools,
+          resultText: resultTextFrom(event.item.result),
+        });
       }
     }
   }
-  return { toolCalls, usage, finalText };
+  return { toolCalls, callRecords, usage, finalText };
 }
 
 function validateRun({
@@ -306,26 +348,50 @@ function validateRun({
   parsed,
   fixtureState,
 }) {
-  const failures = [];
-  if (processResult.code !== 0) failures.push(`codex exited ${processResult.code}`);
-  if (processResult.timedOut) failures.push("codex timed out");
+  const taskFailures = [];
+  const methodFailures = [];
+  const backendUnavailable = parsed.toolCalls.length === 0 && (
+    arm === "ocu"
+      ? /未提供\s*open-computer-use|open-computer-use.+not (?:available|provided)/i.test(
+        parsed.finalText,
+      )
+      : /未提供.+(?:computer-use|node_repl|sky)|(?:computer-use|node_repl|sky).+not (?:available|provided)/i.test(
+        parsed.finalText,
+      )
+  );
+  if (backendUnavailable) {
+    return {
+      valid: false,
+      success: false,
+      taskCompleted: false,
+      methodConformance: false,
+      failures: ["requested Computer Use backend was not injected into the Codex task"],
+    };
+  }
+  if (processResult.code !== 0) taskFailures.push(`codex exited ${processResult.code}`);
+  if (processResult.timedOut) taskFailures.push("codex timed out");
   const expectedFinal = scenarioId === "list-apps"
     ? arm === "official" ? "OFFICIAL_CU_AGENT_OK" : "OCU_V1_AGENT_OK"
-    : arm === "official" ? "OFFICIAL_CU_FIXTURE_OK" : "OCU_V1_FIXTURE_OK";
+    : scenarioId === "focus-unicode"
+      ? arm === "official" ? "OFFICIAL_CU_UNICODE_OK" : "OCU_V1_UNICODE_OK"
+      : arm === "official" ? "OFFICIAL_CU_FIXTURE_OK" : "OCU_V1_FIXTURE_OK";
   if (parsed.finalText.trim() !== expectedFinal) {
-    failures.push(`unexpected final response: ${parsed.finalText.trim()}`);
+    methodFailures.push(`unexpected final response: ${parsed.finalText.trim()}`);
   }
   if (scenarioId === "list-apps") {
     const count = parsed.toolCalls.filter((tool) => tool === "list_apps").length;
-    if (count !== 1) failures.push(`expected one list_apps call, saw ${count}`);
+    if (count !== 1) taskFailures.push(`expected one list_apps call, saw ${count}`);
   } else {
-    for (const required of ["get_app_state", "set_value", "click"]) {
+    const requiredTools = scenarioId === "focus-unicode"
+      ? ["get_app_state", "set_value", "click", "type_text"]
+      : ["get_app_state", "set_value", "click"];
+    for (const required of requiredTools) {
       if (!parsed.toolCalls.includes(required)) {
-        failures.push(`missing ${required} call`);
+        methodFailures.push(`missing ${required} call`);
       }
     }
     if (parsed.toolCalls.filter((tool) => tool === "get_app_state").length < 2) {
-      failures.push("missing post-action state verification");
+      methodFailures.push("missing post-action state verification");
     }
     const input = fixtureState?.elements?.find(
       (element) => element.identifier === "fixture-input",
@@ -333,14 +399,45 @@ function validateRun({
     const counter = fixtureState?.elements?.find(
       (element) => element.identifier === "fixture-counter-label",
     )?.value;
-    if (input !== expectedValue) {
-      failures.push(`fixture input mismatch: expected ${expectedValue}, got ${input}`);
+    const expectedInput = scenarioId === "focus-unicode"
+      ? `${expectedValue}-中文🙂é｜追加`
+      : expectedValue;
+    if (input !== expectedInput) {
+      taskFailures.push(
+        `fixture input mismatch: expected ${expectedInput}, got ${input}`,
+      );
     }
-    if (counter !== "Counter: 1") {
-      failures.push(`fixture counter mismatch: expected Counter: 1, got ${counter}`);
+    const expectedCounter = scenarioId === "focus-unicode"
+      ? "Counter: 0"
+      : "Counter: 1";
+    if (counter !== expectedCounter) {
+      taskFailures.push(
+        `fixture counter mismatch: expected ${expectedCounter}, got ${counter}`,
+      );
+    }
+    if (scenarioId === "focus-unicode") {
+      const typeTextRecordIndex = parsed.callRecords.findIndex((record) =>
+        record.tools.includes("type_text")
+      );
+      const firstVerification = typeTextRecordIndex === -1
+        ? null
+        : parsed.callRecords
+          .slice(typeTextRecordIndex)
+          .find((record) => record.tools.includes("get_app_state"));
+      if (!firstVerification?.resultText.includes(expectedInput)) {
+        methodFailures.push(
+          "type_text did not produce the expected text at the first post-action verification",
+        );
+      }
     }
   }
-  return { success: failures.length === 0, failures };
+  return {
+    valid: true,
+    success: taskFailures.length === 0 && methodFailures.length === 0,
+    taskCompleted: taskFailures.length === 0,
+    methodConformance: methodFailures.length === 0,
+    failures: [...taskFailures, ...methodFailures],
+  };
 }
 
 function summarizeFixture(state) {
@@ -359,30 +456,48 @@ function summarizeResults(allResults) {
   const byArm = {};
   for (const arm of requestedArms) {
     const armResults = allResults.filter((result) => result.arm === arm);
+    const validArmResults = armResults.filter((result) => result.valid);
     byArm[arm] = {
       runs: armResults.length,
-      successes: armResults.filter((result) => result.success).length,
-      successRate: armResults.length === 0
+      validRuns: validArmResults.length,
+      invalidRuns: armResults.length - validArmResults.length,
+      successes: validArmResults.filter((result) => result.success).length,
+      taskCompletions: validArmResults.filter((result) => result.taskCompleted).length,
+      methodConformances: validArmResults.filter((result) => result.methodConformance).length,
+      successRate: validArmResults.length === 0
         ? null
-        : armResults.filter((result) => result.success).length / armResults.length,
-      averageDurationMs: average(armResults.map((result) => result.durationMs)),
-      averageToolCalls: average(armResults.map((result) => result.toolCalls.length)),
+        : validArmResults.filter((result) => result.success).length / validArmResults.length,
+      averageDurationMs: average(validArmResults.map((result) => result.durationMs)),
+      averageToolCalls: average(validArmResults.map((result) => result.toolCalls.length)),
       averageInputTokens: average(
-        armResults.map((result) => result.usage?.input_tokens).filter(Number.isFinite),
+        validArmResults.map((result) => result.usage?.input_tokens).filter(Number.isFinite),
       ),
       averageOutputTokens: average(
-        armResults.map((result) => result.usage?.output_tokens).filter(Number.isFinite),
+        validArmResults.map((result) => result.usage?.output_tokens).filter(Number.isFinite),
       ),
     };
   }
+  const validResults = allResults.filter((result) => result.valid);
+  const hasCompletePairs = requestedArms.every((arm) =>
+    validResults.filter((result) => result.arm === arm).length === repetitions
+  );
   return {
-    allPassed: allResults.length > 0 && allResults.every((result) => result.success),
-    validRuns: allResults.length,
+    allPassed: hasCompletePairs && validResults.every((result) => result.success),
+    validRuns: validResults.length,
+    invalidRuns: allResults.length - validResults.length,
+    hasCompletePairs,
     byArm,
-    interpretation: allResults.length < 30
+    interpretation: validResults.length < 30
       ? "descriptive-only; insufficient paired sample size for a parity claim"
       : "sample threshold reached; analyze confidence intervals before claiming parity",
   };
+}
+
+function resultTextFrom(result) {
+  return (result?.content ?? [])
+    .filter((item) => item?.type === "text" && typeof item.text === "string")
+    .map((item) => item.text)
+    .join("\n");
 }
 
 function average(values) {
@@ -391,33 +506,26 @@ function average(values) {
 }
 
 function fixtureExecutablePath() {
-  let rawExecutable = null;
-  for (const relativePath of [
-    ".build/release/OpenComputerUseFixture",
-    ".build/debug/OpenComputerUseFixture",
-  ]) {
-    const candidate = path.join(repoRoot, relativePath);
-    if (existsSync(candidate)) {
-      rawExecutable = candidate;
-      break;
-    }
+  if (fixtureExecutablePath.cached) {
+    return fixtureExecutablePath.cached;
   }
-  if (!rawExecutable) {
-    const build = spawnSync(
-      "swift",
-      ["build", "-c", "release", "--product", "OpenComputerUseFixture"],
-      { cwd: repoRoot, stdio: "inherit" },
-    );
-    if (build.status !== 0) fail("Failed to build OpenComputerUseFixture.");
-    rawExecutable = path.join(repoRoot, ".build/release/OpenComputerUseFixture");
-    if (!existsSync(rawExecutable)) {
-      fail("OpenComputerUseFixture was not found after build.");
-    }
+  const build = spawnSync(
+    "swift",
+    ["build", "-c", "release", "--product", "OpenComputerUseFixture"],
+    { cwd: repoRoot, stdio: "inherit" },
+  );
+  if (build.status !== 0) fail("Failed to build OpenComputerUseFixture.");
+  const rawExecutable = path.join(
+    repoRoot,
+    ".build/release/OpenComputerUseFixture",
+  );
+  if (!existsSync(rawExecutable)) {
+    fail("OpenComputerUseFixture was not found after build.");
   }
 
   const bundleRoot = path.join(
     repoRoot,
-    ".build/ab-fixtures/OpenComputerUseFixture.app",
+    `.build/ab-fixtures/${fixtureAppName}.app`,
   );
   const bundleExecutable = path.join(
     bundleRoot,
@@ -433,13 +541,14 @@ function fixtureExecutablePath() {
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>OpenComputerUseFixture</string>
 <key>CFBundleIdentifier</key><string>${fixtureBundleIdentifier}</string>
-<key>CFBundleName</key><string>OpenComputerUseFixture</string>
-<key>CFBundleDisplayName</key><string>OpenComputerUseFixture</string>
+<key>CFBundleName</key><string>${fixtureAppName}</string>
+<key>CFBundleDisplayName</key><string>${fixtureAppName}</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 `,
   );
+  fixtureExecutablePath.cached = bundleExecutable;
   return bundleExecutable;
 }
 

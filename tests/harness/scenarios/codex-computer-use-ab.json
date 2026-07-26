@@ -26,7 +26,7 @@
     },
     {
       "id": "focus-unicode",
-      "status": "planned",
+      "status": "automated",
       "risk": "local reversible fixture",
       "purpose": "Focus acquisition plus Chinese, emoji, and composed Unicode input."
     },

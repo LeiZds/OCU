@@ -90,6 +90,7 @@ final class FixtureAppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDele
     private var counter = 0
     private weak var observedScrollView: NSScrollView?
     private var commandObserver: NSObjectProtocol?
+    private var stateRefreshTimer: Timer?
     private let headless: Bool
 
     init(headless: Bool) {
@@ -100,15 +101,28 @@ final class FixtureAppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDele
         buildWindow()
         startCommandObserver()
         updateExportedState()
+        stateRefreshTimer = Timer.scheduledTimer(
+            timeInterval: 0.5,
+            target: self,
+            selector: #selector(refreshExportedState),
+            userInfo: nil,
+            repeats: true
+        )
         if !headless {
             NSApp.activate(ignoringOtherApps: true)
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        stateRefreshTimer?.invalidate()
         if let commandObserver {
             DistributedNotificationCenter.default().removeObserver(commandObserver)
         }
+    }
+
+    @objc
+    private func refreshExportedState() {
+        updateExportedState()
     }
 
     private func buildWindow() {
