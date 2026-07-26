@@ -20,7 +20,7 @@ OCU V1.0 在两个已覆盖的简单场景中均通过，且 `fixture-basic` 与
 
 ## 当前差距
 
-- OCU V1.0 Runtime 只有 9 个工具，缺少官方已有的 `select_text`。
+- 静态哈希与 API 声明检查确认：官方版本 `1.0.1000502` 有 10 个工具，OCU V1.0 Runtime 只有 9 个工具，缺少 `select_text`。协议面覆盖为 90%，但这不是整体能力得分。
 - 恢复、安全、多窗口、滚动、异步弹窗、截图几何与提示注入边界尚未形成有效配对。
 - 当前每个场景只有 1 个有效配对；不足 30 个配对样本前只报告描述性结果。
 
@@ -29,6 +29,7 @@ OCU V1.0 在两个已覆盖的简单场景中均通过，且 `fixture-basic` 与
 ```bash
 make codex-ab SCENARIO=list-apps RUNS=1
 make codex-ab SCENARIO=fixture-basic RUNS=1
+make surface-parity
 ```
 
 原始 JSONL 与 stderr 保存在本地 `artifacts/harness-ab/runs/`，该目录默认不提交，避免把本机应用清单和大段模型日志推送到 GitHub。
