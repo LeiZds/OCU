@@ -1,0 +1,28 @@
+{
+  "productVersion": "1.0.0",
+  "sourceRepository": "https://github.com/LeiZds/OCU",
+  "sourceCommit": "54004e007dfb081754b3c03c93fb54696d3d35d4",
+  "runtimeReportedVersion": "0.2.1",
+  "expectedProtocolVersion": "2025-03-26",
+  "expectedInstructionsLength": 2028,
+  "binaryPath": "dist/Open Computer Use (Dev).app/Contents/MacOS/OpenComputerUse",
+  "binarySha256": "d1b8355daa6dea619e904b2057f17595d61c8b85590deb84a7100325210fbd4e",
+  "skillPath": "skills/open-computer-use/SKILL.md",
+  "skillSha256": "26a9bc0f45961188740146b731e3c1fe7ae39717f960d7445efa5e36c2551d05",
+  "expectedTools": [
+    "click",
+    "drag",
+    "get_app_state",
+    "list_apps",
+    "perform_secondary_action",
+    "press_key",
+    "scroll",
+    "set_value",
+    "type_text"
+  ],
+  "knownBaselineGaps": [
+    "The product baseline is named V1.0, while the embedded CLI and MCP runtime report 0.2.1.",
+    "The runtime exposes nine tools and does not expose select_text.",
+    "The root plugin manifest and packaged Codex plugin manifest disagree on version and repository metadata."
+  ]
+}
