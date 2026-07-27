@@ -390,7 +390,7 @@ final class FixtureAppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDele
             windowTitle: window.title,
             windowBounds: FixtureRect(rect: windowBoundsInQuartzCoordinates()),
             focusedIdentifier: focusedIdentifier,
-            selectedText: focusedIdentifier == "fixture-input" ? selectedText : nil,
+            selectedText: exportedSelectedText(focusedIdentifier: focusedIdentifier),
             lastCommandID: lastCommandID,
             elements: [
                 element(identifier: "fixture-window", index: 0, role: "standard window", title: window.title, value: nil, actions: ["Raise"], rect: CGRect(x: 0, y: 0, width: window.frame.width, height: window.frame.height)),
@@ -407,6 +407,24 @@ final class FixtureAppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDele
         )
 
         try? FixtureBridge.writeState(state)
+    }
+
+    private func exportedSelectedText(focusedIdentifier: String?) -> String? {
+        guard focusedIdentifier == "fixture-input" else {
+            return nil
+        }
+
+        guard let editor = inputField.currentEditor() else {
+            return selectedText
+        }
+
+        let range = editor.selectedRange
+        let value = inputField.stringValue as NSString
+        guard range.length > 0, NSMaxRange(range) <= value.length else {
+            return nil
+        }
+
+        return value.substring(with: range)
     }
 
     private func element(identifier: String, index: Int, role: String, title: String?, value: String?, actions: [String], rect: CGRect) -> FixtureElementState {

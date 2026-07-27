@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "control": "Codex official Computer Use",
-  "candidate": "OCU V1.0 frozen at 54004e007dfb081754b3c03c93fb54696d3d35d4",
+  "candidate": "OCU V1.1 candidate, with V1.0 retained as the frozen historical comparison",
   "invariants": [
     "Run arms serially; never run GUI arms in parallel.",
     "Use the same Codex CLI, default model, reasoning configuration, prompt intent, initial state, and completion oracle.",
@@ -32,9 +32,9 @@
     },
     {
       "id": "select-text",
-      "status": "planned-gap",
+      "status": "automated",
       "risk": "local reversible fixture",
-      "purpose": "Text selection, cursor placement, and ambiguity resolution; V1.0 lacks select_text."
+      "purpose": "Exact text selection and repeated-match disambiguation using prefix and suffix."
     },
     {
       "id": "stale-index-recovery",

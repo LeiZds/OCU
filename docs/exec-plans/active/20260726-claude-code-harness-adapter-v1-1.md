@@ -227,3 +227,5 @@ Bindings（只保存组合特例）
 - 2026-07-27：V1.0 Skill 与二进制校验改为读取冻结提交并在构建目录物化旧 Runtime，V1.1 更新当前 Skill 和 `dist` 后仍能通过 `make baseline-v1`。
 - 2026-07-27：提交前真实 launcher 探测发现，先启动 generic App Agent 后 Claude launcher 会错误继承 generic profile。MCP server 改为在每条连接的请求环境内延迟创建；generic warmup 后 4 个并发 Claude Code × DeepSeek 连接均返回正确 Binding，且只保留一个 Agent。
 - 2026-07-27：同一审计发现 Swift 编译失败后 App 打包脚本仍可能签名旧二进制。构建函数现显式传播失败并检查可执行产物，避免错误版本进入后续 A/B。
+- 2026-07-27：V1.1 Codex 配对运行器增加候选 commit/二进制/Skill 哈希门禁、固定模型与推理强度、进程树 CPU/RSS 采样，并把 `select_text` 重复词歧义消解升级为真实 AX 自动化场景。
+- 2026-07-27：`select_text` 单臂校准中，OCU V1.1 以 5 次调用直接完成；官方首次把 `set_value + select_text` 放在同一 JS block，第二步因状态尚未刷新失败，随后读取状态并恢复完成。正式评分继续使用外部 fixture oracle，同时把失败调用和恢复成本单独计入，不因组合 block 的整体失败状态否认已经生效的第一步。

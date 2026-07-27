@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
@@ -20,6 +21,7 @@ const options = parseArgs(process.argv.slice(2));
 const scenario = options.get("scenario") ?? "list-apps";
 const repetitions = positiveInteger(options.get("repetitions") ?? "1", "repetitions");
 const timeoutMs = positiveInteger(options.get("timeout-ms") ?? "180000", "timeout-ms");
+const candidateVersion = options.get("candidate") ?? "v1.1";
 const invalidRetries = nonNegativeInteger(
   options.get("invalid-retries") ?? "1",
   "invalid-retries",
@@ -32,13 +34,15 @@ const supportedScenarios = new Set([
   "list-apps",
   "fixture-basic",
   "focus-unicode",
+  "select-text",
   "long-page-scroll",
 ]);
 const supportedArms = new Set(["official", "ocu"]);
+const supportedCandidates = new Set(["v1.0", "v1.1"]);
 
 if (!supportedScenarios.has(scenario)) {
   fail(
-    `Unsupported scenario: ${scenario}. Use list-apps, fixture-basic, focus-unicode, or long-page-scroll.`,
+    `Unsupported scenario: ${scenario}. Use list-apps, fixture-basic, focus-unicode, select-text, or long-page-scroll.`,
   );
 }
 if (
@@ -47,11 +51,16 @@ if (
 ) {
   fail("--arms must contain official, ocu, or both.");
 }
+if (!supportedCandidates.has(candidateVersion)) {
+  fail("--candidate must be v1.0 or v1.1.");
+}
 
 const runId =
   options.get("run-id") ?? new Date().toISOString().replace(/[:.]/g, "-");
 const outputDir = path.join(repoRoot, "artifacts/harness-ab/runs", runId);
-const baselineLauncher = path.join(repoRoot, "scripts/run-ocu-v1-baseline.sh");
+const candidateLauncher = candidateVersion === "v1.0"
+  ? path.join(repoRoot, "scripts/run-ocu-v1-baseline.sh")
+  : path.join(repoRoot, "scripts/launch-open-computer-use-codex.sh");
 const officialBaselinePath = path.join(
   repoRoot,
   "tests/harness/baselines/codex-official-1.0.1000502.json",
@@ -71,14 +80,15 @@ const fixtureAppPath = path.join(
 );
 mkdirSync(outputDir, { recursive: true });
 
-if (!existsSync(baselineLauncher)) {
-  fail(`Missing V1.0 launcher: ${baselineLauncher}`);
+if (!existsSync(candidateLauncher)) {
+  fail(`Missing ${candidateVersion} launcher: ${candidateLauncher}`);
 }
 if (!existsSync(officialSkillPath) || !existsSync(officialWrapperPath)) {
   fail(
     `Missing pinned Codex official Computer Use ${officialBaseline.version} at ${officialPluginRoot}.`,
   );
 }
+const candidateIdentity = prepareCandidate();
 
 const results = [];
 for (let repetition = 1; repetition <= repetitions; repetition += 1) {
@@ -117,6 +127,7 @@ for (let repetition = 1; repetition <= repetitions; repetition += 1) {
           durationMs: processResult.durationMs,
           exitCode: processResult.code,
           timedOut: processResult.timedOut,
+          resourceUsage: processResult.resourceUsage,
           transportOutputBytes: Buffer.byteLength(processResult.stdout),
           toolResultTextBytes: parsed.toolResultTextBytes,
           toolResultImageBase64Bytes: parsed.toolResultImageBase64Bytes,
@@ -154,7 +165,8 @@ const report = {
   schemaVersion: 1,
   runId,
   createdAt: new Date().toISOString(),
-  sourceCommit: "54004e007dfb081754b3c03c93fb54696d3d35d4",
+  sourceCommit: commandOutput("git", ["rev-parse", "HEAD"]),
+  candidate: candidateIdentity,
   scenario,
   repetitions,
   armOrderPolicy: "official-first on odd runs, reversed on even runs",
@@ -166,7 +178,7 @@ const report = {
     architecture: process.arch,
     configIsolation: {
       official: `normal user config for node_repl; pinned Computer Use ${officialBaseline.version} wrapper path is supplied in the prompt`,
-      ocu: "--ignore-user-config plus only the frozen OCU MCP override",
+      ocu: `--ignore-user-config plus only the ${candidateVersion} OCU MCP override`,
     },
     fixtureMode: scenario === "list-apps"
       ? null
@@ -214,12 +226,120 @@ function expandHomePath(value) {
   return value;
 }
 
+function prepareCandidate() {
+  if (candidateVersion === "v1.0") {
+    const check = spawnSync(
+      process.execPath,
+      [path.join(scriptDir, "check-ocu-v1-baseline.mjs")],
+      { cwd: repoRoot, encoding: "utf8" },
+    );
+    if (check.status !== 0) {
+      fail(`V1.0 baseline preflight failed: ${check.stderr || check.stdout}`);
+    }
+    const baseline = JSON.parse(
+      readFileSync(
+        path.join(repoRoot, "tests/harness/baselines/ocu-v1.0.json"),
+        "utf8",
+      ),
+    );
+    return {
+      productVersion: "1.0.0",
+      runtimeVersion: baseline.runtimeReportedVersion,
+      sourceCommit: baseline.sourceCommit,
+      binarySha256: baseline.binarySha256,
+      skillSha256: baseline.skillSha256,
+      toolCount: baseline.expectedTools.length,
+      launcher: path.relative(repoRoot, candidateLauncher),
+    };
+  }
+
+  const dirty = commandOutput("git", ["status", "--porcelain"]);
+  if (dirty && options.get("allow-dirty") !== "true") {
+    fail(
+      "V1.1 candidate worktree is dirty. Commit the candidate first, or use --allow-dirty=true only for runner debugging.",
+    );
+  }
+
+  const build = spawnSync(
+    "swift",
+    ["build", "-c", "release", "--product", "OpenComputerUse"],
+    { cwd: repoRoot, stdio: "inherit" },
+  );
+  if (build.status !== 0) {
+    fail("Failed to build the V1.1 candidate runtime.");
+  }
+
+  const binary = path.join(repoRoot, ".build/release/OpenComputerUse");
+  if (!existsSync(binary)) {
+    fail(`V1.1 candidate binary is missing: ${binary}`);
+  }
+
+  const probe = spawnSync(
+    process.execPath,
+    [
+      path.join(scriptDir, "probe-mcp-tools.mjs"),
+      "--timeout-ms",
+      "15000",
+      "--",
+      candidateLauncher,
+    ],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      timeout: 20_000,
+      env: {
+        ...process.env,
+        OPEN_COMPUTER_USE_VISUAL_CURSOR: "0",
+      },
+    },
+  );
+  if (probe.status !== 0) {
+    fail(`V1.1 candidate MCP preflight failed: ${probe.stderr || probe.stdout}`);
+  }
+  const identity = JSON.parse(probe.stdout);
+  const expectedProfile =
+    "Profile: host=codex;model=gpt;binding=codex-gpt.";
+  if (
+    identity.serverInfo?.version !== "1.1.0-dev.1" ||
+    identity.toolCount !== 10 ||
+    !identity.instructions.includes(expectedProfile)
+  ) {
+    fail(
+      `V1.1 candidate identity mismatch: ${JSON.stringify({
+        serverInfo: identity.serverInfo,
+        toolCount: identity.toolCount,
+        expectedProfilePresent: identity.instructions.includes(expectedProfile),
+      })}`,
+    );
+  }
+
+  return {
+    productVersion: "1.1.0-dev.1",
+    runtimeVersion: identity.serverInfo.version,
+    sourceCommit: commandOutput("git", ["rev-parse", "HEAD"]),
+    binarySha256: sha256File(binary),
+    skillSha256: sha256File(
+      path.join(repoRoot, "skills/open-computer-use/SKILL.md"),
+    ),
+    toolCount: identity.toolCount,
+    instructionsBytes: identity.instructionsBytes,
+    profile: expectedProfile,
+    launcher: path.relative(repoRoot, candidateLauncher),
+  };
+}
+
 function codexSpec({ arm, prompt }) {
-  const args = ["exec"];
+  const args = [
+    "exec",
+    "--ignore-rules",
+    "--ephemeral",
+    "--model",
+    "gpt-5.6-sol",
+    "-c",
+    'model_reasoning_effort="high"',
+  ];
   if (arm === "official") {
     args.push(
-      "--ignore-rules",
-      "--ephemeral",
       "--skip-git-repo-check",
       "--dangerously-bypass-approvals-and-sandbox",
       "--disable",
@@ -241,7 +361,7 @@ function codexSpec({ arm, prompt }) {
       "-c",
       'plugins."computer-use@openai-bundled".enabled=false',
       "-c",
-      `mcp_servers.open-computer-use.command=${JSON.stringify(baselineLauncher)}`,
+      `mcp_servers.open-computer-use.command=${JSON.stringify(candidateLauncher)}`,
       "-c",
       'mcp_servers.open-computer-use.args=["mcp"]',
     );
@@ -264,7 +384,7 @@ function makePrompt({ arm, scenario: scenarioId, expectedValue }) {
   if (scenarioId === "list-apps") {
     const finalText = arm === "official"
       ? "OFFICIAL_CU_AGENT_OK"
-      : "OCU_V1_AGENT_OK";
+      : "OCU_CANDIDATE_AGENT_OK";
     return [
       `${backend}.`,
       "Call list_apps exactly once. Do not capture a screenshot or change anything.",
@@ -274,14 +394,18 @@ function makePrompt({ arm, scenario: scenarioId, expectedValue }) {
   const finalText = arm === "official"
     ? scenarioId === "focus-unicode"
       ? "OFFICIAL_CU_UNICODE_OK"
+      : scenarioId === "select-text"
+        ? "OFFICIAL_CU_SELECT_OK"
       : scenarioId === "long-page-scroll"
         ? "OFFICIAL_CU_SCROLL_OK"
       : "OFFICIAL_CU_FIXTURE_OK"
     : scenarioId === "focus-unicode"
-      ? "OCU_V1_UNICODE_OK"
+      ? "OCU_CANDIDATE_UNICODE_OK"
+      : scenarioId === "select-text"
+        ? "OCU_CANDIDATE_SELECT_OK"
       : scenarioId === "long-page-scroll"
-        ? "OCU_V1_SCROLL_OK"
-      : "OCU_V1_FIXTURE_OK";
+        ? "OCU_CANDIDATE_SCROLL_OK"
+      : "OCU_CANDIDATE_FIXTURE_OK";
   if (scenarioId === "focus-unicode") {
     const initialValue = `${expectedValue}-中文🙂é`;
     return [
@@ -302,6 +426,18 @@ function makePrompt({ arm, scenario: scenarioId, expectedValue }) {
       "Use the integer element index shown at the start of that current row as scroll.element_index; never pass the ID string as element_index.",
       "Call scroll with direction down and pages 1.",
       `${stateRead} again. Only finish after Scroll offset is no longer 0.`,
+      `Reply exactly ${finalText}.`,
+    ].join(" ");
+  }
+  if (scenarioId === "select-text") {
+    const selectionValue = `${expectedValue} first value / second value end`;
+    return [
+      `${backend}. Operate the local app ${fixtureAppName}; its test reference is ${appReference}.`,
+      `${stateRead}.`,
+      `Use set_value to set the text field exactly to ${JSON.stringify(selectionValue)}.`,
+      "Use select_text on that editable field to select the second occurrence of value.",
+      "Disambiguate it with prefix \"second \" and suffix \" end\", and use selection_type text.",
+      `${stateRead} again. Only finish after the input value is unchanged, Counter is still 0, and the state reports Selected text: [value].`,
       `Reply exactly ${finalText}.`,
     ].join(" ");
   }
@@ -326,6 +462,7 @@ function runProcess(spec) {
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
+    const resourceSampler = startResourceSampler(child.pid);
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -349,6 +486,7 @@ function runProcess(spec) {
         code: null,
         timedOut,
         durationMs: Date.now() - startedAt,
+        resourceUsage: resourceSampler.stop(),
         stdout,
         stderr: `${stderr}\n${error.message}`,
       });
@@ -361,11 +499,113 @@ function runProcess(spec) {
         code,
         timedOut,
         durationMs: Date.now() - startedAt,
+        resourceUsage: resourceSampler.stop(),
         stdout,
         stderr,
       });
     });
   });
+}
+
+function startResourceSampler(rootPid) {
+  const samples = [];
+  let stopped = false;
+  const capture = () => {
+    const sample = sampleProcessTree(rootPid);
+    if (sample) samples.push(sample);
+  };
+  capture();
+  const timer = setInterval(capture, 500);
+
+  return {
+    stop() {
+      if (stopped) return summarizeResourceSamples(samples);
+      stopped = true;
+      clearInterval(timer);
+      capture();
+      return summarizeResourceSamples(samples);
+    },
+  };
+}
+
+function sampleProcessTree(rootPid) {
+  const result = spawnSync(
+    "/bin/ps",
+    ["-axo", "pid=,ppid=,%cpu=,rss=,command="],
+    { encoding: "utf8" },
+  );
+  if (result.status !== 0) return null;
+
+  const processes = result.stdout
+    .split("\n")
+    .map((line) => {
+      const match = line.match(
+        /^\s*(\d+)\s+(\d+)\s+([0-9.]+)\s+(\d+)\s+(.*)$/,
+      );
+      if (!match) return null;
+      return {
+        pid: Number(match[1]),
+        ppid: Number(match[2]),
+        cpuPercent: Number(match[3]),
+        rssKb: Number(match[4]),
+        command: match[5],
+      };
+    })
+    .filter(Boolean);
+
+  const descendants = new Set([rootPid]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const process of processes) {
+      if (!descendants.has(process.pid) && descendants.has(process.ppid)) {
+        descendants.add(process.pid);
+        changed = true;
+      }
+    }
+  }
+  const tree = processes.filter((process) => descendants.has(process.pid));
+  if (tree.length === 0) return null;
+
+  return {
+    timestampMs: Date.now(),
+    processCount: tree.length,
+    cpuPercent: tree.reduce((sum, process) => sum + process.cpuPercent, 0),
+    rssKb: tree.reduce((sum, process) => sum + process.rssKb, 0),
+    ocuProcessCount: tree.filter((process) =>
+      process.pid !== rootPid &&
+      /OpenComputerUse|open-computer-use/.test(process.command)
+    ).length,
+  };
+}
+
+function summarizeResourceSamples(samples) {
+  if (samples.length === 0) {
+    return {
+      samples: 0,
+      peakProcessCount: null,
+      peakCpuPercent: null,
+      averageCpuPercent: null,
+      peakRssKb: null,
+      peakOcuProcessCount: null,
+    };
+  }
+
+  return {
+    samples: samples.length,
+    peakProcessCount: Math.max(...samples.map((sample) => sample.processCount)),
+    peakCpuPercent: roundOne(
+      Math.max(...samples.map((sample) => sample.cpuPercent)),
+    ),
+    averageCpuPercent: roundOne(
+      samples.reduce((sum, sample) => sum + sample.cpuPercent, 0) /
+        samples.length,
+    ),
+    peakRssKb: Math.max(...samples.map((sample) => sample.rssKb)),
+    peakOcuProcessCount: Math.max(
+      ...samples.map((sample) => sample.ocuProcessCount),
+    ),
+  };
 }
 
 function parseCodexEvents(stdout, arm) {
@@ -423,6 +663,13 @@ function parseCodexEvents(stdout, arm) {
       event.item.tool === "js"
     ) {
       const code = event.item.arguments?.code ?? "";
+      const resultContent = event.item.result?.content ?? [];
+      toolResultTextBytes += resultContent
+        .filter((item) => item?.type === "text" && typeof item.text === "string")
+        .reduce((sum, item) => sum + Buffer.byteLength(item.text), 0);
+      toolResultImageBase64Bytes += resultContent
+        .filter((item) => item?.type === "image" && typeof item.data === "string")
+        .reduce((sum, item) => sum + Buffer.byteLength(item.data), 0);
       const recordTools = [...code.matchAll(
         /\bsky\.(click|drag|get_app_state|list_apps|perform_secondary_action|press_key|scroll|select_text|set_value|type_text)\s*\(/g,
       )].map((match) => match[1]);
@@ -482,12 +729,14 @@ function validateRun({
   if (processResult.code !== 0) taskFailures.push(`codex exited ${processResult.code}`);
   if (processResult.timedOut) taskFailures.push("codex timed out");
   const expectedFinal = scenarioId === "list-apps"
-    ? arm === "official" ? "OFFICIAL_CU_AGENT_OK" : "OCU_V1_AGENT_OK"
+    ? arm === "official" ? "OFFICIAL_CU_AGENT_OK" : "OCU_CANDIDATE_AGENT_OK"
     : scenarioId === "focus-unicode"
-      ? arm === "official" ? "OFFICIAL_CU_UNICODE_OK" : "OCU_V1_UNICODE_OK"
+      ? arm === "official" ? "OFFICIAL_CU_UNICODE_OK" : "OCU_CANDIDATE_UNICODE_OK"
+      : scenarioId === "select-text"
+        ? arm === "official" ? "OFFICIAL_CU_SELECT_OK" : "OCU_CANDIDATE_SELECT_OK"
       : scenarioId === "long-page-scroll"
-        ? arm === "official" ? "OFFICIAL_CU_SCROLL_OK" : "OCU_V1_SCROLL_OK"
-      : arm === "official" ? "OFFICIAL_CU_FIXTURE_OK" : "OCU_V1_FIXTURE_OK";
+        ? arm === "official" ? "OFFICIAL_CU_SCROLL_OK" : "OCU_CANDIDATE_SCROLL_OK"
+      : arm === "official" ? "OFFICIAL_CU_FIXTURE_OK" : "OCU_CANDIDATE_FIXTURE_OK";
   if (parsed.finalText.trim() !== expectedFinal) {
     methodFailures.push(`unexpected final response: ${parsed.finalText.trim()}`);
   }
@@ -497,11 +746,13 @@ function validateRun({
   } else {
     const requiredTools = scenarioId === "focus-unicode"
       ? ["get_app_state", "set_value", "click", "type_text"]
+      : scenarioId === "select-text"
+        ? ["get_app_state", "set_value", "select_text"]
       : scenarioId === "long-page-scroll"
         ? ["get_app_state", "scroll"]
         : ["get_app_state", "set_value", "click"];
     for (const required of requiredTools) {
-      if (!parsed.successfulToolCalls.includes(required)) {
+      if (!parsed.toolCalls.includes(required)) {
         methodFailures.push(`missing ${required} call`);
       }
     }
@@ -516,13 +767,17 @@ function validateRun({
     )?.value;
     const expectedInput = scenarioId === "focus-unicode"
       ? `${expectedValue}-中文🙂é｜追加`
+      : scenarioId === "select-text"
+        ? `${expectedValue} first value / second value end`
       : scenarioId === "long-page-scroll" ? "seed" : expectedValue;
     if (input !== expectedInput) {
       taskFailures.push(
         `fixture input mismatch: expected ${expectedInput}, got ${input}`,
       );
     }
-    const expectedCounter = scenarioId === "focus-unicode" || scenarioId === "long-page-scroll"
+    const expectedCounter = scenarioId === "focus-unicode" ||
+        scenarioId === "select-text" ||
+        scenarioId === "long-page-scroll"
       ? "Counter: 0"
       : "Counter: 1";
     if (counter !== expectedCounter) {
@@ -544,6 +799,11 @@ function validateRun({
           "type_text did not produce the expected text at the first post-action verification",
         );
       }
+    }
+    if (scenarioId === "select-text" && fixtureState?.selectedText !== "value") {
+      taskFailures.push(
+        `fixture selected text mismatch: expected value, got ${fixtureState?.selectedText}`,
+      );
     }
     if (
       scenarioId === "long-page-scroll" &&
@@ -570,6 +830,7 @@ function summarizeFixture(state) {
   );
   return {
     focusedIdentifier: state.focusedIdentifier,
+    selectedText: state.selectedText ?? null,
     input: byId["fixture-input"],
     counter: byId["fixture-counter-label"],
     scroll: byId["fixture-scroll-status"],
@@ -593,6 +854,39 @@ function summarizeResults(allResults) {
         : validArmResults.filter((result) => result.success).length / validArmResults.length,
       averageDurationMs: average(validArmResults.map((result) => result.durationMs)),
       averageToolCalls: average(validArmResults.map((result) => result.toolCalls.length)),
+      averageActionCalls: average(validArmResults.map((result) => result.actionCalls.length)),
+      averageStateReads: average(validArmResults.map((result) => result.stateReads)),
+      averageToolResultTextBytes: average(
+        validArmResults.map((result) => result.toolResultTextBytes),
+      ),
+      averageToolResultImageBase64Bytes: average(
+        validArmResults.map((result) => result.toolResultImageBase64Bytes),
+      ),
+      averageTransportOutputBytes: average(
+        validArmResults.map((result) => result.transportOutputBytes),
+      ),
+      averagePeakCpuPercent: average(
+        validArmResults
+          .map((result) => result.resourceUsage?.peakCpuPercent)
+          .filter(Number.isFinite),
+      ),
+      averageCpuPercent: average(
+        validArmResults
+          .map((result) => result.resourceUsage?.averageCpuPercent)
+          .filter(Number.isFinite),
+      ),
+      averagePeakRssKb: average(
+        validArmResults
+          .map((result) => result.resourceUsage?.peakRssKb)
+          .filter(Number.isFinite),
+      ),
+      maximumOcuProcessCount: validArmResults.length === 0
+        ? null
+        : Math.max(
+          ...validArmResults.map(
+            (result) => result.resourceUsage?.peakOcuProcessCount ?? 0,
+          ),
+        ),
       averageInputTokens: average(
         validArmResults.map((result) => result.usage?.input_tokens).filter(Number.isFinite),
       ),
@@ -627,6 +921,10 @@ function resultTextFrom(result) {
 function average(values) {
   if (values.length === 0) return null;
   return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function roundOne(value) {
+  return Math.round(value * 10) / 10;
 }
 
 function fixtureExecutablePath() {
@@ -724,6 +1022,10 @@ function readFixtureState() {
 function commandOutput(command, args) {
   const result = spawnSync(command, args, { encoding: "utf8" });
   return result.status === 0 ? result.stdout.trim() : null;
+}
+
+function sha256File(file) {
+  return createHash("sha256").update(readFileSync(file)).digest("hex");
 }
 
 function delay(milliseconds) {

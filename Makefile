@@ -3,6 +3,7 @@ SLUG ?=
 AGENTS ?= claude,codex
 SCENARIO ?= list-apps
 RUNS ?= 1
+CANDIDATE ?= v1.1
 
 .PHONY: init build app test smoke stress agent-smoke baseline-v1 surface-parity adaptation-check app-agent-check codex-ab check-docs check-repo ci release-package npm-build npm-publish new-history new-plan
 
@@ -43,7 +44,7 @@ app-agent-check:
 	node ./scripts/check-app-agent-singleton.mjs
 
 codex-ab:
-	node ./scripts/run-codex-computer-use-ab.mjs --scenario=$(SCENARIO) --repetitions=$(RUNS)
+	node ./scripts/run-codex-computer-use-ab.mjs --candidate=$(CANDIDATE) --scenario=$(SCENARIO) --repetitions=$(RUNS)
 
 check-docs:
 	./scripts/check-docs.sh
