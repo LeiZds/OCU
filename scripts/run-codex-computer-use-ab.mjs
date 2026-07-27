@@ -574,7 +574,12 @@ function sampleProcessTree(rootPid) {
     rssKb: tree.reduce((sum, process) => sum + process.rssKb, 0),
     ocuProcessCount: tree.filter((process) =>
       process.pid !== rootPid &&
-      /OpenComputerUse|open-computer-use/.test(process.command)
+      (
+        /\/OpenComputerUse(?:\s|$)/.test(process.command) ||
+        /\/(?:run-ocu-v1-baseline|launch-open-computer-use-(?:codex|claude))\.sh(?:\s|$)/.test(
+          process.command,
+        )
+      )
     ).length,
   };
 }

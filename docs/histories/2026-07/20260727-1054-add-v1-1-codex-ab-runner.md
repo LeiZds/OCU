@@ -16,6 +16,7 @@
 - **[Fair pairing]**: 两臂固定 `gpt-5.6-sol` 与 high reasoning，统一忽略 rules、使用 ephemeral session，并继续串行、交替臂顺序和外部 fixture oracle。
 - **[Selection scenario]**: 自动化重复文本的 `select_text` 歧义消解；fixture 从真实 field editor 导出当前选择，避免只相信 Agent 或工具返回。
 - **[Performance evidence]**: 每 500ms 采样 Codex 进程树的 CPU、RSS、进程数和 OCU 子进程数，并记录工具文本、图片 Base64、transport 字节和 token 使用。
+- **[Parser calibration]**: 官方 `node_repl` 可在一个 JS block 内组合多个 `sky` 调用；工具存在性按实际调用记录判断，失败和恢复另外计数。OCU 进程计数只匹配真实 launcher/native runtime，不匹配提示词中的产品名称。
 
 ### 🧠 Design Intent (Why)
 V1.1 不能只靠十工具 smoke 提分；配对样本必须证明 Agent 实际选择了正确工具、外部 UI 状态达标、没有测错二进制，并把速度、上下文和资源成本与任务成功分开记录。
