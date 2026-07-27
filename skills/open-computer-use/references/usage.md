@@ -85,19 +85,19 @@ open-computer-use snapshot --text-limit max TextEdit
 
 The same `text_limit` tool argument and `--text-limit` snapshot flag apply on macOS, Linux, and Windows. `text_limit` accepts a positive integer or the string `"max"`.
 
-Direct CLI action calls return refreshed app state with the default 500 character text limit. By default, successful MCP action calls return empty content, so run `get_app_state` after each action. When `OPEN_COMPUTER_USE_RETURN_ACTION_STATE=1`, successful MCP actions instead return the screenshot-free refreshed state already collected by the runtime, normally as a stable-index diff from the state returned before the action; inspect it directly and do not issue a duplicate `get_app_state` solely to verify the same action. Use `text_limit: 1000` or `text_limit: "max"` when a separate follow-up needs longer text.
+Direct CLI action calls return refreshed app state with the default 500 character text limit. By default, successful MCP action calls return empty content, so run `get_app_state` after each action. When `OPEN_COMPUTER_USE_RETURN_ACTION_STATE=1`, successful MCP actions instead return the screenshot-free refreshed state already collected by the runtime, normally as a same-session accessibility diff from the state last presented to the model; inspect it directly and do not issue a duplicate `get_app_state` solely to verify the same action. Use `text_limit: 1000` or `text_limit: "max"` when a separate follow-up needs longer text.
 
 Use `disable_screenshot: true` when the next decision requires only semantic accessibility evidence such as a focused control, an address value, or a document URL. The call still refreshes the element map and diff baseline, but omits screenshot capture and the image content block. Do not use it before coordinate actions or when visual layout or content is part of the task.
 
 ## State Diffs
 
-The first `get_app_state` call for an app returns a full tree. Later calls in the same MCP process return a stable-index diff by default. Pass `"disableDiff": true` when the previous tree is unavailable to the agent or a fresh full tree is needed:
+The first `get_app_state` call for an app returns a full tree. Later calls in the same MCP process return a same-session accessibility diff by default. Preserve the previous state, and use current integer indices from the latest full state or changed rows. Pass `"disableDiff": true` when the previous tree is unavailable to the agent or a fresh full tree is needed:
 
 ```sh
 open-computer-use call get_app_state --args '{"app":"TextEdit","disableDiff":true}'
 ```
 
-Action-cache refreshes do not advance the explicit-read diff baseline.
+Action-cache refreshes advance the presented-state diff baseline only when action-state return is enabled and the refreshed state is actually returned. Empty action results do not advance it.
 
 ## Text Selection
 

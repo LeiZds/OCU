@@ -168,7 +168,7 @@ Bindings（只保存组合特例）
 ## 验证方式
 
 - 静态检查：
-  - `claude plugin validate --strict .`
+  - `claude plugin validate .`
   - 工具 Schema parity 检查必须覆盖十工具。
   - manifest、Skill、Runtime 和 GitHub 制品版本一致性检查。
 - Runtime：
@@ -200,7 +200,7 @@ Bindings（只保存组合特例）
 - [x] 从 GitHub `54004e0` 建立隔离 V1.1 工作区，并清除旧 OCU 运行安装、进程、MCP 指向、Skill 和 Codex 缓存。
 - [x] 建立唯一 V1.0 可复现运行入口；哈希门禁确认 Runtime `0.2.1`、MCP instructions `2028` 字符及 9 工具真实协议面。
 - [x] 完成 Codex 内部 V1.0 首轮基线配对与暂定评分；剩余场景继续作为 V1.1 回归覆盖，不用当前样本宣称统计等价。
-- [ ] 实现十工具 parity、紧凑指令和 Claude 插件包装。
+- [x] 实现十工具 parity、紧凑指令和 Claude 插件包装。
 - [ ] 完成 Codex V1.1 回归。
 - [ ] 完成 Claude Code + DeepSeek 黑盒回归（TRAE CN 仅作启动和观察界面）。
 - [ ] 更新版本、history、安装说明并直接推送 GitHub。
@@ -221,3 +221,9 @@ Bindings（只保存组合特例）
 - 2026-07-27：确认 V1.0 的 `disable_screenshot` 只存在于 Schema，执行分发层未读取；直接调用和 Agent 轨迹都证明即使传 `true` 仍返回 JPEG。该缺口列为 V1.1 P0 性能修复。
 - 2026-07-27：严格 `fixture-basic` 配对固定官方 `1.0.1000502` wrapper，排除 Skill 发现波动后，官方 35.766 秒、OCU 37.335 秒，双方均以相同 4 步真实 AX 路径完成。OCU 仍额外返回约 102,944 字节图片 Base64。
 - 2026-07-27：以官方为 100 分教官基准，OCU V1.0 首轮暂定 61/100；未测试项按未证明扣分，后续只能由新增证据提分。
+- 2026-07-27：V1.1 macOS Runtime 已补齐 `select_text`；`disable_screenshot=true` 在捕获阶段跳过 ScreenCaptureKit，动作刷新也不再生成不会返回的截图。10-tool fixture smoke、12 组合适配矩阵、Codex/Claude manifest 校验均通过。
+- 2026-07-27：Codex、Claude Code、WorkBuddy Host Adapter 与 GPT、DeepSeek Model Profile 分层落地；Binding 在未显式指定时只为 `Codex × GPT` 和 `Claude Code × DeepSeek` 自动选择。最长组合指令为 1950 UTF-8 字节。
+- 2026-07-27：并发启动验证曾复现两个 App Agent 争用同一 socket；Runtime 增加跨进程文件锁后，4 个并发 Claude 客户端均连接成功且只留下 1 个常驻 Agent。该检查已固化为 `make app-agent-check`。
+- 2026-07-27：V1.0 Skill 与二进制校验改为读取冻结提交并在构建目录物化旧 Runtime，V1.1 更新当前 Skill 和 `dist` 后仍能通过 `make baseline-v1`。
+- 2026-07-27：提交前真实 launcher 探测发现，先启动 generic App Agent 后 Claude launcher 会错误继承 generic profile。MCP server 改为在每条连接的请求环境内延迟创建；generic warmup 后 4 个并发 Claude Code × DeepSeek 连接均返回正确 Binding，且只保留一个 Agent。
+- 2026-07-27：同一审计发现 Swift 编译失败后 App 打包脚本仍可能签名旧二进制。构建函数现显式传播失败并检查可执行产物，避免错误版本进入后续 A/B。

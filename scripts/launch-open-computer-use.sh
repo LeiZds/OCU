@@ -5,20 +5,17 @@ set -euo pipefail
 plugin_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 repo_root="$(cd "${plugin_root}/../.." && pwd)"
 
+export OPEN_COMPUTER_USE_HOST_ADAPTER="${OPEN_COMPUTER_USE_HOST_ADAPTER:-generic}"
+export OPEN_COMPUTER_USE_MODEL_PROFILE="${OPEN_COMPUTER_USE_MODEL_PROFILE:-generic}"
+
 # Codex already runs as the stable Accessibility-authorized host. Keep local
 # plugin rebuilds on that host identity instead of launching a newly ad-hoc
 # signed app-agent identity after every iteration. Callers can explicitly set
 # this variable to 0 when testing the standalone app-agent permission flow.
-if [[ "$(uname -s)" == "Darwin" && -z "${OPEN_COMPUTER_USE_DISABLE_APP_AGENT_PROXY:-}" ]]; then
+if [[ "$(uname -s)" == "Darwin" \
+  && "${OPEN_COMPUTER_USE_HOST_ADAPTER}" == "codex" \
+  && -z "${OPEN_COMPUTER_USE_DISABLE_APP_AGENT_PROXY:-}" ]]; then
   export OPEN_COMPUTER_USE_DISABLE_APP_AGENT_PROXY=1
-fi
-
-# Codex's isolated executor cannot always compose one MCP action with its
-# verification read. Return the runtime's already-refreshed, screenshot-free
-# action state so the model can verify one action without an empty-result turn.
-# Callers can set this to 0 to retain the compact upstream MCP transport.
-if [[ -z "${OPEN_COMPUTER_USE_RETURN_ACTION_STATE:-}" ]]; then
-  export OPEN_COMPUTER_USE_RETURN_ACTION_STATE=1
 fi
 
 candidate_binaries=(
@@ -27,6 +24,10 @@ candidate_binaries=(
   "${plugin_root}/OpenComputerUse.app/Contents/MacOS/OpenComputerUse"
   "${plugin_root}/open-computer-use"
   "${plugin_root}/open-computer-use.exe"
+  "${plugin_root}/.build/release/OpenComputerUse"
+  "${plugin_root}/dist/Open Computer Use (Dev).app/Contents/MacOS/OpenComputerUse"
+  "${plugin_root}/dist/Open Computer Use.app/Contents/MacOS/OpenComputerUse"
+  "${plugin_root}/dist/OpenComputerUse.app/Contents/MacOS/OpenComputerUse"
   "${repo_root}/dist/Open Computer Use (Dev).app/Contents/MacOS/OpenComputerUse"
   "${repo_root}/dist/Open Computer Use.app/Contents/MacOS/OpenComputerUse"
   "${repo_root}/dist/OpenComputerUse.app/Contents/MacOS/OpenComputerUse"
@@ -57,5 +58,5 @@ for app_binary in "${candidate_binaries[@]}"; do
   echo "  - ${app_binary}" >&2
 done
 echo "  - open-computer-use on PATH" >&2
-echo "Run ./scripts/install-codex-plugin.sh to populate the Codex plugin cache." >&2
+echo "Build the native runtime or install the released OCU package for this host." >&2
 exit 1

@@ -45,7 +45,7 @@ Do not repeat speculative navigation indefinitely. If reliable signals remain in
 ## Observation Budget
 
 - Start with the default `get_app_state` budgets. Do not pre-emptively request `text_limit: "max"`, maximum tree depth, or maximum nodes for a task whose address bar and document URL are already visible.
-- Keep the same MCP process so later reads can use stable-index diffs. Omit `disableDiff` on routine follow-up checks.
+- Keep the same MCP process so later reads can use same-session accessibility diffs. Omit `disableDiff` on routine follow-up checks.
 - Use `disable_screenshot: true` for focus, address value, and document URL checks when the semantic tree or diff is sufficient. Retain an image when the tree is ambiguous or the page result itself must be visually inspected. With an older runtime, use host-side content filtering only when the host exposes that capability.
 - Expand or refresh the full tree only when the target evidence is missing, the prior baseline is unavailable, or a large UI replacement makes the diff insufficient.
 - Do not refocus the address bar solely to expose cosmetic URL formatting when the document URL and page state already provide the requested verification. If the user explicitly asks for the displayed address-bar string, one targeted check is enough.

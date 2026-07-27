@@ -4,12 +4,16 @@ set -euo pipefail
 
 plugin_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 repo_root="$(cd "${plugin_root}/../.." && pwd)"
+export OPEN_COMPUTER_USE_HOST_ADAPTER="${OPEN_COMPUTER_USE_HOST_ADAPTER:-codex}"
+export OPEN_COMPUTER_USE_MODEL_PROFILE="${OPEN_COMPUTER_USE_MODEL_PROFILE:-gpt}"
+export OPEN_COMPUTER_USE_RETURN_ACTION_STATE="${OPEN_COMPUTER_USE_RETURN_ACTION_STATE:-1}"
 candidate_binaries=(
   "${plugin_root}/Open Computer Use.app/Contents/MacOS/OpenComputerUse"
   "${plugin_root}/Open Computer Use (Dev).app/Contents/MacOS/OpenComputerUse"
   "${plugin_root}/OpenComputerUse.app/Contents/MacOS/OpenComputerUse"
   "${plugin_root}/open-computer-use"
   "${plugin_root}/open-computer-use.exe"
+  "${repo_root}/.build/release/OpenComputerUse"
   "${repo_root}/dist/Open Computer Use (Dev).app/Contents/MacOS/OpenComputerUse"
   "${repo_root}/dist/Open Computer Use.app/Contents/MacOS/OpenComputerUse"
   "${repo_root}/dist/OpenComputerUse.app/Contents/MacOS/OpenComputerUse"

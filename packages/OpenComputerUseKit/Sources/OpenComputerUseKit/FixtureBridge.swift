@@ -43,17 +43,29 @@ public struct FixtureAppState: Codable, Sendable {
     public let windowTitle: String
     public let windowBounds: FixtureRect
     public let focusedIdentifier: String?
+    public let selectedText: String?
+    public let lastCommandID: String?
     public let elements: [FixtureElementState]
 
-    public init(windowTitle: String, windowBounds: FixtureRect, focusedIdentifier: String?, elements: [FixtureElementState]) {
+    public init(
+        windowTitle: String,
+        windowBounds: FixtureRect,
+        focusedIdentifier: String?,
+        selectedText: String? = nil,
+        lastCommandID: String? = nil,
+        elements: [FixtureElementState]
+    ) {
         self.windowTitle = windowTitle
         self.windowBounds = windowBounds
         self.focusedIdentifier = focusedIdentifier
+        self.selectedText = selectedText
+        self.lastCommandID = lastCommandID
         self.elements = elements
     }
 }
 
 public struct FixtureCommand: Codable, Sendable {
+    public let commandID: String?
     public let kind: String
     public let identifier: String
     public let value: String?
@@ -63,8 +75,12 @@ public struct FixtureCommand: Codable, Sendable {
     public let toY: Double?
     public let direction: String?
     public let pages: Double?
+    public let prefix: String?
+    public let suffix: String?
+    public let selectionType: String?
 
     public init(
+        commandID: String? = UUID().uuidString,
         kind: String,
         identifier: String,
         value: String? = nil,
@@ -73,8 +89,12 @@ public struct FixtureCommand: Codable, Sendable {
         toX: Double? = nil,
         toY: Double? = nil,
         direction: String? = nil,
-        pages: Double? = nil
+        pages: Double? = nil,
+        prefix: String? = nil,
+        suffix: String? = nil,
+        selectionType: String? = nil
     ) {
+        self.commandID = commandID
         self.kind = kind
         self.identifier = identifier
         self.value = value
@@ -84,6 +104,9 @@ public struct FixtureCommand: Codable, Sendable {
         self.toY = toY
         self.direction = direction
         self.pages = pages
+        self.prefix = prefix
+        self.suffix = suffix
+        self.selectionType = selectionType
     }
 }
 
@@ -134,6 +157,31 @@ public enum FixtureBridge {
             object: nil,
             userInfo: payload.map { ["payload": $0] },
             options: .deliverImmediately
+        )
+    }
+
+    public static func postAndWaitForStateChange(
+        _ command: FixtureCommand,
+        timeout: TimeInterval = 2
+    ) throws {
+        guard let commandID = command.commandID else {
+            throw ComputerUseError.invalidArguments(
+                "fixture command requires a command ID for acknowledgement"
+            )
+        }
+
+        try post(command)
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if try readState()?.lastCommandID == commandID {
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+
+        throw ComputerUseError.stateUnavailable(
+            "Timed out waiting for the fixture to apply \(command.kind)"
         )
     }
 }

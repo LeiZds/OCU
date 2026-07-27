@@ -1,8 +1,7 @@
 {
   "mcpServers": {
     "open-computer-use": {
-      "command": "./scripts/launch-open-computer-use.sh",
-      "cwd": "."
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/launch-open-computer-use-claude.sh"
     }
   }
 }

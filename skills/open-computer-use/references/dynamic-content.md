@@ -6,7 +6,7 @@ Read this reference when a task must traverse an incrementally loaded or virtual
 
 - Start from a fresh state in the intended app and window.
 - Identify the requested record boundary, semantic deduplication key, and safe stopping condition before scrolling.
-- Keep state reads in the same MCP process when possible so stable-index diffs can be evaluated.
+- Keep state reads in the same MCP process when possible so same-session accessibility diffs can be evaluated.
 
 ## Incremental and Virtualized Lists
 

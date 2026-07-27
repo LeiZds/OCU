@@ -14,8 +14,16 @@ const baselinePath = path.join(
 );
 const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
 
-assertHash(baseline.binaryPath, baseline.binarySha256);
-assertHash(baseline.skillPath, baseline.skillSha256);
+assertGitBlobHash(
+  baseline.sourceCommit,
+  baseline.binaryPath,
+  baseline.binarySha256,
+);
+assertGitBlobHash(
+  baseline.sourceCommit,
+  baseline.skillPath,
+  baseline.skillSha256,
+);
 
 const probeText = execFileSync(
   path.join(repoRoot, "scripts/run-ocu-v1-baseline.sh"),
@@ -67,14 +75,18 @@ process.stdout.write(
   )}\n`,
 );
 
-function assertHash(relativePath, expected) {
-  const absolutePath = path.join(repoRoot, relativePath);
+function assertGitBlobHash(commit, relativePath, expected) {
+  const blob = execFileSync("git", ["show", `${commit}:${relativePath}`], {
+    cwd: repoRoot,
+    encoding: null,
+    maxBuffer: 16 * 1024 * 1024,
+  });
   const actual = createHash("sha256")
-    .update(readFileSync(absolutePath))
+    .update(blob)
     .digest("hex");
   if (actual !== expected) {
     throw new Error(
-      `Hash mismatch for ${relativePath}: expected ${expected}, got ${actual}`,
+      `Hash mismatch for ${commit}:${relativePath}: expected ${expected}, got ${actual}`,
     );
   }
 }

@@ -99,8 +99,12 @@ build_binary() {
   fi
 
   local binary_dir
-  binary_dir="$(swift build "${args[@]}" --show-bin-path)"
-  swift build "${args[@]}" --product OpenComputerUse >&2
+  binary_dir="$(swift build "${args[@]}" --show-bin-path)" || return $?
+  swift build "${args[@]}" --product OpenComputerUse >&2 || return $?
+  if [[ ! -x "${binary_dir}/OpenComputerUse" ]]; then
+    echo "Swift build completed without a runnable OpenComputerUse binary." >&2
+    return 1
+  fi
   printf '%s/OpenComputerUse\n' "${binary_dir}"
 }
 

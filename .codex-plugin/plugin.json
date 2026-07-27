@@ -1,7 +1,7 @@
 {
   "name": "open-computer-use",
-  "version": "0.1.0",
-  "description": "Open-source cross-platform Computer Use MCP server - V0.1 with enhanced brain",
+  "version": "1.1.0-dev.1",
+  "description": "Open-source cross-platform Computer Use with host adapters, model profiles, and evidence-based recovery.",
   "author": {
     "name": "Leo",
     "url": "https://github.com/LeiZds"
@@ -16,11 +16,16 @@
     "mcp",
     "codex"
   ],
-  "mcpServers": "./.mcp.json",
+  "mcpServers": {
+    "open-computer-use": {
+      "command": "./scripts/launch-open-computer-use-codex.sh",
+      "cwd": "."
+    }
+  },
   "interface": {
     "displayName": "Open Computer Use (OCU)",
-    "shortDescription": "Control desktop apps with the open local server (V0.1)",
-    "longDescription": "Open Computer Use V0.1 - enhanced with tested experience layer, security boundaries, and runtime fixes. Exposes ten desktop-control MCP tools through a local macOS app bundle.",
+    "shortDescription": "Control desktop apps with adaptive local Computer Use",
+    "longDescription": "Open Computer Use V1.1 combines a shared accessibility Runtime with Codex, Claude Code, and WorkBuddy host adapters, GPT and DeepSeek model profiles, sparse bindings, and ten desktop-control tools.",
     "developerName": "Leo",
     "category": "Productivity",
     "capabilities": [
@@ -37,8 +42,8 @@
       "Drive the fixture app and verify the ten computer-use tools still behave correctly"
     ],
     "brandColor": "#0E7490",
-    "composerIcon": "./assets/open-computer-use-small.svg",
-    "logo": "./assets/open-computer-use.svg",
+    "composerIcon": "./plugins/open-computer-use/assets/open-computer-use-small.svg",
+    "logo": "./plugins/open-computer-use/assets/open-computer-use.svg",
     "screenshots": []
   }
 }

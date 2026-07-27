@@ -237,7 +237,109 @@ final class OpenComputerUseKitTests: XCTestCase {
     }
 
     func testToolDefinitionCount() {
-        XCTAssertEqual(ToolDefinitions.all.count, 9)
+        XCTAssertEqual(ToolDefinitions.all.count, 10)
+    }
+
+    func testTextSelectionFindsUniqueExactMatch() throws {
+        XCTAssertEqual(
+            try resolveTextSelectionRange(in: "alpha beta gamma", text: "beta"),
+            NSRange(location: 6, length: 4)
+        )
+    }
+
+    func testTextSelectionUsesPrefixAndSuffixToDisambiguate() throws {
+        XCTAssertEqual(
+            try resolveTextSelectionRange(
+                in: "first value / second value end",
+                text: "value",
+                prefix: "second ",
+                suffix: " end"
+            ),
+            NSRange(location: 21, length: 5)
+        )
+    }
+
+    func testTextSelectionCursorOffsetsUseUTF16Positions() throws {
+        XCTAssertEqual(
+            try resolveTextSelectionRange(
+                in: "A🙂B",
+                text: "🙂",
+                selectionType: "cursor_before"
+            ),
+            NSRange(location: 1, length: 0)
+        )
+        XCTAssertEqual(
+            try resolveTextSelectionRange(
+                in: "A🙂B",
+                text: "🙂",
+                selectionType: "cursor_after"
+            ),
+            NSRange(location: 3, length: 0)
+        )
+    }
+
+    func testTextSelectionRejectsAmbiguousMatch() {
+        XCTAssertThrowsError(
+            try resolveTextSelectionRange(in: "same same", text: "same")
+        ) { error in
+            XCTAssertTrue(
+                error.localizedDescription.contains("matched 2 locations")
+            )
+        }
+    }
+
+    func testAccessibilityStateDiffReturnsOnlyChangedBodyLines() {
+        let previous = """
+        App=com.example.Sample (pid 7)
+        Window: "Sample", App: Sample.
+        0 standard window Sample
+            1 text field Value: before
+            2 button Save
+        """
+        let current = """
+        App=com.example.Sample (pid 7)
+        Window: "Sample", App: Sample.
+        0 standard window Sample
+            1 text field Value: after
+            2 button Save
+        """
+
+        let diff = renderAccessibilityStateDiff(previous: previous, current: current)
+
+        XCTAssertTrue(diff.contains("Removed:\n    1 text field Value: before"))
+        XCTAssertTrue(diff.contains("Added:\n    1 text field Value: after"))
+        XCTAssertFalse(diff.contains("Added:\n    2 button Save"))
+    }
+
+    func testAccessibilityStateDiffReportsUnchangedStateCompactly() {
+        let state = """
+        App=com.example.Sample (pid 7)
+        Window: "Sample", App: Sample.
+        0 standard window Sample
+        """
+
+        let diff = renderAccessibilityStateDiff(previous: state, current: state)
+
+        XCTAssertTrue(diff.contains("No accessibility changes"))
+        XCTAssertEqual(diff.components(separatedBy: "\n").count, 4)
+    }
+
+    func testAccessibilityStateDiffReturnsFullStateWhenWindowChanges() {
+        let previous = """
+        App=com.example.Sample (pid 7)
+        Window: "Old", App: Sample.
+        0 standard window Old
+        """
+        let current = """
+        App=com.example.Sample (pid 7)
+        Window: "New", App: Sample.
+        0 standard window New
+        """
+
+        XCTAssertEqual(
+            renderAccessibilityStateDiff(previous: previous, current: current),
+            current
+        )
     }
 
     func testReadToolArgumentsAcceptsJSONObject() throws {
@@ -587,6 +689,55 @@ final class OpenComputerUseKitTests: XCTestCase {
         XCTAssertEqual(instructions, computerUseServerInstructions)
     }
 
+    func testClaudeCodeDeepSeekAdaptationUsesSparseBinding() {
+        let adaptation = OpenComputerUseAgentAdaptation(environment: [
+            "OPEN_COMPUTER_USE_HOST_ADAPTER": "claude-code",
+            "OPEN_COMPUTER_USE_MODEL_PROFILE": "deepseek",
+        ])
+
+        XCTAssertEqual(adaptation.host, .claudeCode)
+        XCTAssertEqual(adaptation.model, .deepseek)
+        XCTAssertEqual(adaptation.binding, .claudeCodeDeepSeek)
+        XCTAssertTrue(adaptation.serverInstructions.contains("Claude Code adapter"))
+        XCTAssertTrue(adaptation.serverInstructions.contains("DeepSeek profile"))
+        XCTAssertTrue(adaptation.serverInstructions.contains("Claude Code+DeepSeek binding"))
+    }
+
+    func testAgentAdaptationInstructionsStayWithinClaudeBudget() {
+        for host in OpenComputerUseHostAdapter.allCases {
+            for model in OpenComputerUseModelProfile.allCases {
+                let adaptation = OpenComputerUseAgentAdaptation(environment: [
+                    "OPEN_COMPUTER_USE_HOST_ADAPTER": host.rawValue,
+                    "OPEN_COMPUTER_USE_MODEL_PROFILE": model.rawValue,
+                ])
+                XCTAssertLessThanOrEqual(
+                    adaptation.serverInstructions.utf8.count,
+                    2_048,
+                    adaptation.identifier
+                )
+            }
+        }
+    }
+
+    func testInitializeResponseUsesRequestedAgentAdaptation() throws {
+        let server = StdioMCPServer(
+            service: ComputerUseService(),
+            environment: [
+                "OPEN_COMPUTER_USE_HOST_ADAPTER": "claude-code",
+                "OPEN_COMPUTER_USE_MODEL_PROFILE": "deepseek",
+            ]
+        )
+        let response = try XCTUnwrap(
+            server.handle(line: #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#)
+        )
+        let data = try XCTUnwrap(response.data(using: .utf8))
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let result = try XCTUnwrap(json["result"] as? [String: Any])
+        let instructions = try XCTUnwrap(result["instructions"] as? String)
+
+        XCTAssertTrue(instructions.contains("host=claude-code;model=deepseek;binding=claude-code-deepseek"))
+    }
+
     func testMCPAcceptsTurnEndedNotificationWithoutResponse() {
         let server = StdioMCPServer(service: ComputerUseService())
         let response = server.handle(line: #"{"jsonrpc":"2.0","method":"notifications/turn-ended","params":{"type":"agent-turn-complete"}}"#)
@@ -609,8 +760,9 @@ final class OpenComputerUseKitTests: XCTestCase {
 
         XCTAssertEqual(
             tools["get_app_state"]?.description,
-            "Start an app use session if needed, then get the state of the app's key window and return a screenshot and accessibility tree. This must be called once per assistant turn before interacting with the app. This tool is part of plugin `Computer Use`."
+            "Start an app use session if needed, then get the state of the app's key window and return accessibility evidence plus an optional screenshot. Call this once per assistant turn before interacting. On follow-up checks fully supported by semantic role, value, selected state, text, focus, list change, or document URL, set disable_screenshot=true; retain screenshots for visual ambiguity or coordinate work. This tool is part of plugin `Computer Use`."
         )
+        XCTAssertNotNil(tools["select_text"])
         XCTAssertTrue(tools["press_key"]?.description.contains("xdotool") == true)
         XCTAssertEqual(
             tools["click"]?.annotations["destructiveHint"] as? Bool,

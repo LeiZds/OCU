@@ -1,13 +1,13 @@
 {
   "name": "open-computer-use",
-  "version": "0.2.1",
-  "description": "Open-source cross-platform Computer Use MCP server packaged as a Codex plugin.",
+  "version": "1.1.0-dev.1",
+  "description": "Open-source Computer Use with a shared Runtime, Host Adapters, Model Profiles, and sparse Bindings.",
   "author": {
     "name": "Leo",
-    "url": "https://github.com/iFurySt"
+    "url": "https://github.com/LeiZds"
   },
-  "homepage": "https://github.com/iFurySt/open-codex-computer-use",
-  "repository": "https://github.com/iFurySt/open-codex-computer-use",
+  "homepage": "https://github.com/LeiZds/OCU",
+  "repository": "https://github.com/LeiZds/OCU",
   "license": "MIT",
   "keywords": [
     "computer-use",
@@ -20,7 +20,7 @@
   "interface": {
     "displayName": "Open Computer Use",
     "shortDescription": "Control desktop apps from Codex with the open local server",
-    "longDescription": "Open Computer Use packages this repository's open-source desktop automation server as a Codex plugin. It exposes the same nine desktop-control MCP tools through a local macOS app bundle or Linux / Windows native binary, with semantic accessibility paths preferred before fallback input.",
+    "longDescription": "Open Computer Use V1.1 packages the macOS ten-tool Runtime with a Codex Adapter and GPT Model Profile. Experimental Linux and Windows runtimes retain the nine-tool subset without select_text.",
     "developerName": "Leo",
     "category": "Productivity",
     "capabilities": [
@@ -28,13 +28,13 @@
       "Read",
       "Write"
     ],
-    "websiteURL": "https://github.com/iFurySt/open-codex-computer-use",
-    "privacyPolicyURL": "https://github.com/iFurySt/open-codex-computer-use/blob/main/SECURITY.md",
-    "termsOfServiceURL": "https://github.com/iFurySt/open-codex-computer-use/blob/main/LICENSE",
+    "websiteURL": "https://github.com/LeiZds/OCU",
+    "privacyPolicyURL": "https://github.com/LeiZds/OCU/blob/main/SECURITY.md",
+    "termsOfServiceURL": "https://github.com/LeiZds/OCU/blob/main/LICENSE",
     "defaultPrompt": [
       "Inspect the current UI state of this desktop app without stealing focus when possible",
       "Open a new local document with keyboard shortcuts first, then type content without moving my real pointer unless required",
-      "Drive the fixture app and verify the nine computer-use tools still behave correctly"
+      "Drive the fixture app and verify the ten macOS computer-use tools still behave correctly"
     ],
     "brandColor": "#0E7490",
     "composerIcon": "./assets/open-computer-use-small.svg",

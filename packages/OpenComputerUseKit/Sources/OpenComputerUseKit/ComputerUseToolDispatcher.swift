@@ -50,6 +50,8 @@ public final class ComputerUseToolDispatcher {
         case "get_app_state":
             return try service.getAppState(
                 app: requireString("app", in: arguments),
+                disableDiff: try optionalBool("disableDiff", in: arguments) ?? false,
+                disableScreenshot: try optionalBool("disable_screenshot", in: arguments) ?? false,
                 textLimit: try optionalTextLimit("text_limit", in: arguments) ?? .defaults,
                 treeLimits: AccessibilityTreeLimits.defaults.replacing(
                     maxNodeCount: try optionalPositiveInt("max_tree_nodes", in: arguments),
@@ -78,6 +80,16 @@ public final class ComputerUseToolDispatcher {
                 direction: requireString("direction", in: arguments),
                 elementIndex: requireElementIndex(in: arguments),
                 pages: optionalDouble("pages", in: arguments) ?? 1
+            )
+        case "select_text":
+            return try service.selectText(
+                app: requireString("app", in: arguments),
+                elementIndex: requireElementIndex(in: arguments),
+                text: requireString("text", in: arguments),
+                prefix: optionalString("prefix", in: arguments),
+                suffix: optionalString("suffix", in: arguments),
+                selectionType: optionalString("selection_type", in: arguments)
+                    ?? TextSelectionType.text.rawValue
             )
         case "drag":
             return try service.drag(
@@ -186,6 +198,18 @@ public final class ComputerUseToolDispatcher {
         return nil
     }
 
+    private func optionalBool(_ key: String, in arguments: [String: Any]) throws -> Bool? {
+        guard let value = arguments[key] else {
+            return nil
+        }
+
+        if let bool = value as? Bool {
+            return bool
+        }
+
+        throw ComputerUseError.invalidArguments("\(key) must be a boolean")
+    }
+
     private func optionalPositiveInt(_ key: String, in arguments: [String: Any]) throws -> Int? {
         guard let value = arguments[key] else {
             return nil
@@ -268,7 +292,7 @@ public typealias OpenComputerUseSleepHandler = (TimeInterval) -> Void
 
 public func runOpenComputerUseCall(
     _ invocation: OpenComputerUseCallInvocation,
-    service: ComputerUseService = ComputerUseService(),
+    service: ComputerUseService = ComputerUseService(returnActionState: true),
     sleepHandler: OpenComputerUseSleepHandler = { Thread.sleep(forTimeInterval: $0) }
 ) throws -> OpenComputerUseCallOutput {
     let dispatcher = ComputerUseToolDispatcher(service: service)

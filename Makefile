@@ -4,7 +4,7 @@ AGENTS ?= claude,codex
 SCENARIO ?= list-apps
 RUNS ?= 1
 
-.PHONY: init build app test smoke stress agent-smoke baseline-v1 surface-parity codex-ab check-docs check-repo ci release-package npm-build npm-publish new-history new-plan
+.PHONY: init build app test smoke stress agent-smoke baseline-v1 surface-parity adaptation-check app-agent-check codex-ab check-docs check-repo ci release-package npm-build npm-publish new-history new-plan
 
 init:
 	@if [ -z "$(PROJECT)" ]; then echo "用法: make init PROJECT=项目名"; exit 1; fi
@@ -33,6 +33,14 @@ baseline-v1:
 
 surface-parity:
 	node ./scripts/check-computer-use-surface-parity.mjs
+
+adaptation-check:
+	swift build -c release --product OpenComputerUse
+	node ./scripts/check-agent-adaptation.mjs
+
+app-agent-check:
+	./scripts/build-open-computer-use-app.sh debug
+	node ./scripts/check-app-agent-singleton.mjs
 
 codex-ab:
 	node ./scripts/run-codex-computer-use-ab.mjs --scenario=$(SCENARIO) --repetitions=$(RUNS)

@@ -155,6 +155,7 @@ private struct CLIProxyResponse {
 @MainActor
 private final class MacOSAppAgentRuntime: NSObject, NSApplicationDelegate {
     private let socketPath: String
+    private var processLock: AppAgentProcessLock?
     private var listener: AppAgentSocketListener?
     private var turnEndedObserver: NSObjectProtocol?
 
@@ -183,6 +184,8 @@ private final class MacOSAppAgentRuntime: NSObject, NSApplicationDelegate {
         }
 
         do {
+            let processLock = try AppAgentProcessLock(path: socketPath + ".lock")
+            self.processLock = processLock
             let listener = try AppAgentSocketListener(path: socketPath)
             self.listener = listener
             listener.start()
@@ -197,6 +200,7 @@ private final class MacOSAppAgentRuntime: NSObject, NSApplicationDelegate {
             DistributedNotificationCenter.default().removeObserver(turnEndedObserver)
         }
         listener?.stop()
+        processLock = nil
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -206,6 +210,39 @@ private final class MacOSAppAgentRuntime: NSObject, NSApplicationDelegate {
     private func writeAgentError(_ error: Error) {
         let message = (error as? LocalizedError)?.errorDescription ?? String(describing: error)
         FileHandle.standardError.write(Data((message + "\n").utf8))
+    }
+}
+
+private final class AppAgentProcessLock {
+    private let fileDescriptor: Int32
+
+    init(path: String) throws {
+        let fileDescriptor = Darwin.open(
+            path,
+            O_CREAT | O_RDWR,
+            mode_t(S_IRUSR | S_IWUSR)
+        )
+        guard fileDescriptor >= 0 else {
+            throw POSIXError(.init(rawValue: errno) ?? .EIO)
+        }
+
+        guard flock(fileDescriptor, LOCK_EX | LOCK_NB) == 0 else {
+            let lockError = errno
+            close(fileDescriptor)
+            if lockError == EWOULDBLOCK {
+                throw OpenComputerUseCLIError(
+                    message: "Another Open Computer Use app agent already owns this session."
+                )
+            }
+            throw POSIXError(.init(rawValue: lockError) ?? .EIO)
+        }
+
+        self.fileDescriptor = fileDescriptor
+    }
+
+    deinit {
+        _ = flock(fileDescriptor, LOCK_UN)
+        close(fileDescriptor)
     }
 }
 
@@ -292,7 +329,7 @@ private final class AppAgentSocketListener: @unchecked Sendable {
 
 private final class AppAgentConnection: @unchecked Sendable {
     private let fileDescriptor: Int32
-    private let server = StdioMCPServer()
+    private var server: StdioMCPServer?
 
     init(fileDescriptor: Int32) {
         self.fileDescriptor = fileDescriptor
@@ -336,7 +373,10 @@ private final class AppAgentConnection: @unchecked Sendable {
                 let line = request["line"] as? String ?? ""
                 let environment = request["environment"] as? [String: String] ?? [:]
                 let response = AppAgentEnvironment.withOverrides(environment) {
-                    server.handle(line: line)
+                    if server == nil {
+                        server = StdioMCPServer()
+                    }
+                    return server!.handle(line: line)
                 }
                 if let response {
                     return ["response": response]

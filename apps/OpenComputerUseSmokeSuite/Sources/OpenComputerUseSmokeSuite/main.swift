@@ -35,7 +35,7 @@ final class MCPClient {
         _ = try request(method: "initialize", params: [
             "clientInfo": [
                 "name": "OpenComputerUseSmokeSuite",
-                "version": "0.2.1",
+                "version": "1.1.0-dev.1",
             ],
             "capabilities": [:],
             "protocolVersion": "2025-03-26",
@@ -70,6 +70,30 @@ final class MCPClient {
         }
 
         return text
+    }
+
+    func callToolExpectingEmptyContent(_ name: String, arguments: [String: Any]) throws {
+        let response = try request(method: "tools/call", params: [
+            "name": name,
+            "arguments": arguments,
+        ])
+
+        if let error = response.error {
+            throw SmokeError.message("JSON-RPC error: \(error)")
+        }
+
+        let result = response.result ?? [:]
+        if (result["isError"] as? Bool) == true {
+            let text = extractText(from: result) ?? "unknown tool error"
+            throw SmokeError.message(text)
+        }
+
+        let content = result["content"] as? [[String: Any]] ?? []
+        guard content.isEmpty else {
+            throw SmokeError.message(
+                "Tool \(name) should return empty content when action-state return is disabled."
+            )
+        }
     }
 
     func terminate() {
@@ -196,8 +220,8 @@ enum OpenComputerUseSmokeSuite {
         try client.initialize()
 
         let tools = try client.listTools()
-        guard tools.count == 9 else {
-            throw SmokeError.message("Expected 9 tools, got \(tools.count)")
+        guard tools.count == 10 else {
+            throw SmokeError.message("Expected 10 tools, got \(tools.count)")
         }
 
         print("1. list_apps")
@@ -208,7 +232,24 @@ enum OpenComputerUseSmokeSuite {
         var state = try client.callTool("get_app_state", arguments: [
             "app": appName,
         ])
-        var index = parseElementIndex(state)
+        let unchangedDiff = try client.callTool("get_app_state", arguments: [
+            "app": appName,
+            "disable_screenshot": true,
+        ])
+        try expect(
+            unchangedDiff.contains("No accessibility changes"),
+            "same-session get_app_state should return a compact unchanged diff"
+        )
+        state = try client.callTool("get_app_state", arguments: [
+            "app": appName,
+            "disableDiff": true,
+            "disable_screenshot": true,
+        ])
+        try expect(
+            state.contains("fixture-increment"),
+            "disableDiff=true should restore the full accessibility state"
+        )
+        let index = parseElementIndex(state)
         try expect(index.keys.contains("fixture-increment"), "fixture button should be indexed")
         let initialCounter = parseCounterValue(state)
 
@@ -220,7 +261,6 @@ enum OpenComputerUseSmokeSuite {
         try expect(parseCounterValue(state) == initialCounter + 1, "click should increment the counter")
 
         print("4. click coordinate")
-        index = parseElementIndex(state)
         let buttonFrame = index["fixture-increment"]!.frame
         state = try client.callTool("click", arguments: [
             "app": appName,
@@ -258,8 +298,20 @@ enum OpenComputerUseSmokeSuite {
         ])
         try expect(state.contains("set-value-ok-typed"), "type_text should append literal text to the focused text field")
 
-        print("8. press_key")
-        index = parseElementIndex(state)
+        print("8. select_text")
+        state = try client.callTool("select_text", arguments: [
+            "app": appName,
+            "element_index": index["fixture-input"]!.index,
+            "text": "-typed",
+            "prefix": "set-value-ok",
+            "selection_type": "text",
+        ])
+        try expect(
+            state.contains("Selected text: [-typed]"),
+            "select_text should select the exact disambiguated text"
+        )
+
+        print("9. press_key")
         let keyCaptureFrame = index["fixture-key-capture"]!.frame
         _ = try client.callTool("click", arguments: [
             "app": appName,
@@ -272,8 +324,7 @@ enum OpenComputerUseSmokeSuite {
         ])
         try expect(state.contains("Last key: Return"), "press_key should update the key capture view")
 
-        print("9. scroll")
-        index = parseElementIndex(state)
+        print("10. scroll")
         let scrollIndex = index["fixture-scroll-view"]!.index
         state = try client.callTool("scroll", arguments: [
             "app": appName,
@@ -281,10 +332,12 @@ enum OpenComputerUseSmokeSuite {
             "element_index": scrollIndex,
             "pages": 1,
         ])
-        try expect(!state.contains("Scroll offset: 0"), "scroll should move the scroll view")
+        try expect(
+            !currentEvidence(in: state).contains("Scroll offset: 0"),
+            "scroll should move the scroll view"
+        )
 
-        print("10. drag")
-        index = parseElementIndex(state)
+        print("11. drag")
         let dragFrame = index["fixture-drag-pad"]!.frame
         state = try client.callTool("drag", arguments: [
             "app": appName,
@@ -294,7 +347,40 @@ enum OpenComputerUseSmokeSuite {
             "to_y": dragFrame.maxY - 30,
         ])
         try expect(state.contains("Last drag:"), "drag should update the drag status label")
-        try expect(!state.contains("Last drag: none"), "drag should report a captured path")
+        try expect(
+            !currentEvidence(in: state).contains("Last drag: none"),
+            "drag should report a captured path"
+        )
+
+        print("12. action-state return disabled")
+        var compactEnvironment = smokeServerEnvironment()
+        compactEnvironment["OPEN_COMPUTER_USE_RETURN_ACTION_STATE"] = "0"
+        let compactClient = try MCPClient(
+            executableURL: serverURL,
+            arguments: ["mcp"],
+            environment: compactEnvironment
+        )
+        defer {
+            compactClient.terminate()
+        }
+        try compactClient.initialize()
+        let compactState = try compactClient.callTool("get_app_state", arguments: [
+            "app": appName,
+            "disable_screenshot": true,
+        ])
+        let compactIndex = parseElementIndex(compactState)
+        try compactClient.callToolExpectingEmptyContent("click", arguments: [
+            "app": appName,
+            "element_index": compactIndex["fixture-increment"]!.index,
+        ])
+        let verifiedCompactState = try compactClient.callTool("get_app_state", arguments: [
+            "app": appName,
+            "disable_screenshot": true,
+        ])
+        try expect(
+            parseCounterValue(verifiedCompactState) == initialCounter + 3,
+            "empty action result should still update runtime state for the next explicit read"
+        )
 
         print("Smoke suite completed.")
     }
@@ -348,6 +434,7 @@ enum OpenComputerUseSmokeSuite {
     private static func smokeServerEnvironment() -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
         environment["OPEN_COMPUTER_USE_DISABLE_APP_AGENT_PROXY"] = "1"
+        environment["OPEN_COMPUTER_USE_RETURN_ACTION_STATE"] = "1"
         return environment
     }
 
@@ -436,6 +523,7 @@ enum OpenComputerUseSmokeSuite {
     }
 
     private static func parseCounterValue(_ state: String) -> Int {
+        let state = currentEvidence(in: state)
         guard
             let range = state.range(of: "Counter: "),
             let value = state[range.upperBound...].split(whereSeparator: { !$0.isNumber }).first,
@@ -445,6 +533,10 @@ enum OpenComputerUseSmokeSuite {
         }
 
         return counter
+    }
+
+    private static func currentEvidence(in state: String) -> String {
+        state.components(separatedBy: "\nRemoved:\n").first ?? state
     }
 
     private static func cursorObservationFileURL() -> URL {

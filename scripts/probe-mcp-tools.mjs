@@ -107,6 +107,14 @@ function consumeLines() {
           typeof initializeResult?.instructions === "string"
             ? initializeResult.instructions.length
             : 0,
+        instructionsBytes:
+          typeof initializeResult?.instructions === "string"
+            ? Buffer.byteLength(initializeResult.instructions, "utf8")
+            : 0,
+        instructions:
+          typeof initializeResult?.instructions === "string"
+            ? initializeResult.instructions
+            : "",
         toolCount: tools.length,
         tools: tools.map((tool) => ({
           name: tool.name,
@@ -114,6 +122,11 @@ function consumeLines() {
             typeof tool.description === "string" ? tool.description.length : 0,
           required: tool.inputSchema?.required ?? [],
           properties: Object.keys(tool.inputSchema?.properties ?? {}),
+          propertyTypes: Object.fromEntries(
+            Object.entries(tool.inputSchema?.properties ?? {}).map(
+              ([name, schema]) => [name, schema?.type ?? null],
+            ),
+          ),
         })),
       });
     }

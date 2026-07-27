@@ -37,7 +37,7 @@ public enum ToolDefinitions {
             inputSchema: objectSchema(
                 properties: [
                     "app": stringProperty(description: "App name or bundle identifier"),
-                    "element_index": stringProperty(description: "Element index to click"),
+                    "element_index": integerProperty(description: "Current sequential integer index from the latest accessibility state; do not pass a stable ID string"),
                     "x": numberProperty(description: "X coordinate in screenshot pixel coordinates"),
                     "y": numberProperty(description: "Y coordinate in screenshot pixel coordinates"),
                     "click_count": integerProperty(description: "Number of clicks. Defaults to 1"),
@@ -97,7 +97,7 @@ public enum ToolDefinitions {
             inputSchema: objectSchema(
                 properties: [
                     "app": stringProperty(description: "App name or bundle identifier"),
-                    "element_index": stringProperty(description: "Element identifier"),
+                    "element_index": integerProperty(description: "Current sequential integer index from the latest accessibility state; do not pass a stable ID string"),
                     "action": stringProperty(description: "Secondary accessibility action name"),
                 ],
                 required: ["app", "element_index", "action"]
@@ -123,10 +123,29 @@ public enum ToolDefinitions {
                 properties: [
                     "app": stringProperty(description: "App name or bundle identifier"),
                     "direction": stringProperty(description: "Scroll direction: up, down, left, or right"),
-                    "element_index": stringProperty(description: "Element identifier"),
+                    "element_index": integerProperty(description: "Current sequential integer index from the latest accessibility state; do not pass a stable ID string"),
                     "pages": numberProperty(description: "Number of pages to scroll. Fractional values are supported. Defaults to 1"),
                 ],
                 required: ["app", "element_index", "direction"]
+            )
+        ),
+        ToolDefinition(
+            name: "select_text",
+            description: "Select exact matching text or place the cursor before or after it in an editable element. Use prefix or suffix to disambiguate repeated matches. This tool is part of plugin `Computer Use`.",
+            annotations: defaultAnnotations(),
+            inputSchema: objectSchema(
+                properties: [
+                    "app": stringProperty(description: "App name or bundle identifier"),
+                    "element_index": integerProperty(description: "Current sequential integer index from the latest accessibility state; do not pass a stable ID string"),
+                    "text": stringProperty(description: "Exact text to match"),
+                    "prefix": stringProperty(description: "Optional exact context immediately before the match"),
+                    "suffix": stringProperty(description: "Optional exact context immediately after the match"),
+                    "selection_type": stringProperty(
+                        description: "Select the text itself, or place the cursor immediately before or after it. Defaults to text.",
+                        enumValues: TextSelectionType.allCases.map(\.rawValue)
+                    ),
+                ],
+                required: ["app", "element_index", "text"]
             )
         ),
         ToolDefinition(
@@ -136,7 +155,7 @@ public enum ToolDefinitions {
             inputSchema: objectSchema(
                 properties: [
                     "app": stringProperty(description: "App name or bundle identifier"),
-                    "element_index": stringProperty(description: "Element identifier"),
+                    "element_index": integerProperty(description: "Current sequential integer index from the latest accessibility state; do not pass a stable ID string"),
                     "value": stringProperty(description: "Value to assign"),
                 ],
                 required: ["app", "element_index", "value"]

@@ -387,8 +387,17 @@ func shouldPreferContainingWebRowAXClickCandidate(
 
 public final class ComputerUseService {
     private var snapshotsByApp: [String: AppSnapshot] = [:]
+    private var presentedStatesByApp: [String: String] = [:]
+    private let returnActionState: Bool
 
-    public init() {}
+    public init(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        returnActionState: Bool? = nil
+    ) {
+        self.returnActionState = returnActionState ?? Self.environmentFlag(
+            environment["OPEN_COMPUTER_USE_RETURN_ACTION_STATE"]
+        )
+    }
 
     public func listApps() -> ToolCallResult {
         ToolCallResult.text(
@@ -400,10 +409,24 @@ public final class ComputerUseService {
 
     public func getAppState(
         app query: String,
+        disableDiff: Bool = false,
+        disableScreenshot: Bool = false,
         textLimit: SnapshotTextLimit = .defaults,
         treeLimits: AccessibilityTreeLimits = .defaults
     ) throws -> ToolCallResult {
-        snapshotResult(for: try refreshSnapshot(for: query, textLimit: textLimit, treeLimits: treeLimits), style: .fullState)
+        let snapshot = try refreshSnapshot(
+            for: query,
+            captureScreenshot: !disableScreenshot,
+            textLimit: textLimit,
+            treeLimits: treeLimits
+        )
+        return presentedSnapshotResult(
+            for: snapshot,
+            query: query,
+            style: .fullState,
+            disableDiff: disableDiff,
+            includeScreenshot: !disableScreenshot
+        )
     }
 
     public func click(
@@ -438,19 +461,22 @@ public final class ComputerUseService {
                 }
                 cursorTarget = visualCursorTarget(for: record, snapshot: snapshot)
                 moveVisualCursor(to: cursorTarget)
-                try FixtureBridge.post(FixtureCommand(kind: "click", identifier: identifier))
+                try FixtureBridge.postAndWaitForStateChange(
+                    FixtureCommand(kind: "click", identifier: identifier)
+                )
             } else if let x, let y {
                 let identifier = try fixtureIdentifier(at: CGPoint(x: x, y: y), snapshot: snapshot)
                 cursorTarget = fixtureVisualCursorTarget(identifier: identifier, snapshot: snapshot)
                 moveVisualCursor(to: cursorTarget)
-                try FixtureBridge.post(FixtureCommand(kind: "click", identifier: identifier, x: x, y: y))
+                try FixtureBridge.postAndWaitForStateChange(
+                    FixtureCommand(kind: "click", identifier: identifier, x: x, y: y)
+                )
             } else {
                 throw ComputerUseError.invalidArguments("click requires either element_index or x/y")
             }
 
-            Thread.sleep(forTimeInterval: 0.15)
             pulseVisualCursor(at: cursorTarget, clickCount: clickCount, mouseButton: button)
-            return snapshotResult(for: try refreshSnapshot(for: query), style: .actionResult)
+            return try actionSnapshotResult(for: query)
         }
 
         if let elementIndex {
@@ -576,7 +602,7 @@ public final class ComputerUseService {
             throw ComputerUseError.invalidArguments("click requires either element_index or x/y")
         }
 
-        return snapshotResult(for: try refreshSnapshot(for: query), style: .actionResult)
+        return try actionSnapshotResult(for: query)
     }
 
     public func performSecondaryAction(app query: String, elementIndex: String, action: String) throws -> ToolCallResult {
@@ -588,7 +614,7 @@ public final class ComputerUseService {
                 throw ComputerUseError.message(invalidSecondaryActionMessage(action: action, record: record))
             }
 
-            return snapshotResult(for: try refreshSnapshot(for: query), style: .actionResult)
+            return try actionSnapshotResult(for: query)
         }
 
         guard let rawAction = matchingAction(requested: action, record: record) else {
@@ -605,7 +631,7 @@ public final class ComputerUseService {
         }
 
         Thread.sleep(forTimeInterval: 0.15)
-        return snapshotResult(for: try refreshSnapshot(for: query), style: .actionResult)
+        return try actionSnapshotResult(for: query)
     }
 
     public func scroll(app query: String, direction: String, elementIndex: String, pages: Double) throws -> ToolCallResult {
@@ -624,9 +650,10 @@ public final class ComputerUseService {
             guard let identifier = record.identifier else {
                 throw ComputerUseError.invalidArguments("fixture scroll requires an identifier-backed element")
             }
-            try FixtureBridge.post(FixtureCommand(kind: "scroll", identifier: identifier, direction: normalized, pages: pages))
-            Thread.sleep(forTimeInterval: 0.15)
-            return snapshotResult(for: try refreshSnapshot(for: query), style: .actionResult)
+            try FixtureBridge.postAndWaitForStateChange(
+                FixtureCommand(kind: "scroll", identifier: identifier, direction: normalized, pages: pages)
+            )
+            return try actionSnapshotResult(for: query)
         }
 
         if let repeatCount = integralScrollPageCount(pages),
@@ -648,15 +675,16 @@ public final class ComputerUseService {
             throw ComputerUseError.stateUnavailable("element \(elementIndex) has no scrollable frame")
         }
 
-        return snapshotResult(for: try refreshSnapshot(for: query), style: .actionResult)
+        return try actionSnapshotResult(for: query)
     }
 
     public func drag(app query: String, fromX: Double, fromY: Double, toX: Double, toY: Double) throws -> ToolCallResult {
         let snapshot = try currentSnapshot(for: query)
         if snapshot.mode == .fixture {
-            try FixtureBridge.post(FixtureCommand(kind: "drag", identifier: "fixture-drag-pad", x: fromX, y: fromY, toX: toX, toY: toY))
-            Thread.sleep(forTimeInterval: 0.15)
-            return snapshotResult(for: try refreshSnapshot(for: query), style: .actionResult)
+            try FixtureBridge.postAndWaitForStateChange(
+                FixtureCommand(kind: "drag", identifier: "fixture-drag-pad", x: fromX, y: fromY, toX: toX, toY: toY)
+            )
+            return try actionSnapshotResult(for: query)
         }
 
         let start = try screenshotToGlobalPoint(snapshot: snapshot, x: fromX, y: fromY)
@@ -667,20 +695,105 @@ public final class ComputerUseService {
             targetDescription: "from=(\(Int(fromX)), \(Int(fromY))) to=(\(Int(toX)), \(Int(toY)))",
             snapshot: snapshot
         )
-        return snapshotResult(for: try refreshSnapshot(for: query), style: .actionResult)
+        return try actionSnapshotResult(for: query)
+    }
+
+    public func selectText(
+        app query: String,
+        elementIndex: String,
+        text: String,
+        prefix: String?,
+        suffix: String?,
+        selectionType: String
+    ) throws -> ToolCallResult {
+        let snapshot = try currentSnapshot(for: query)
+        let record = try lookupElement(snapshot: snapshot, index: elementIndex)
+
+        if snapshot.mode == .fixture {
+            guard let identifier = record.identifier else {
+                throw ComputerUseError.invalidArguments(
+                    "fixture select_text requires a known element identifier"
+                )
+            }
+            try FixtureBridge.postAndWaitForStateChange(
+                FixtureCommand(
+                    kind: "select_text",
+                    identifier: identifier,
+                    value: text,
+                    prefix: prefix,
+                    suffix: suffix,
+                    selectionType: selectionType
+                )
+            )
+            return try actionSnapshotResult(for: query)
+        }
+
+        guard let element = record.element else {
+            throw ComputerUseError.stateUnavailable(
+                "element \(elementIndex) has no backing accessibility object"
+            )
+        }
+        guard let currentValue = stringValue(of: element, attribute: kAXValueAttribute) else {
+            throw ComputerUseError.invalidArguments(
+                "select_text requires an editable element with a string value"
+            )
+        }
+
+        let range = try resolveTextSelectionRange(
+            in: currentValue,
+            text: text,
+            prefix: prefix,
+            suffix: suffix,
+            selectionType: selectionType
+        )
+        var settable = DarwinBoolean(false)
+        let settableResult = AXUIElementIsAttributeSettable(
+            element,
+            kAXSelectedTextRangeAttribute as CFString,
+            &settable
+        )
+        guard settableResult == .success, settable.boolValue else {
+            throw ComputerUseError.message(
+                "select_text is not supported by element \(elementIndex)"
+            )
+        }
+
+        _ = AXUIElementSetAttributeValue(
+            element,
+            kAXFocusedAttribute as CFString,
+            kCFBooleanTrue
+        )
+        var selectedRange = CFRange(location: range.location, length: range.length)
+        guard let rangeValue = AXValueCreate(.cfRange, &selectedRange) else {
+            throw ComputerUseError.message("Failed to encode the selected text range")
+        }
+        let result = AXUIElementSetAttributeValue(
+            element,
+            kAXSelectedTextRangeAttribute as CFString,
+            rangeValue
+        )
+        guard result == .success else {
+            throw ComputerUseError.message(
+                "AXUIElementSetAttributeValue failed with \(result.rawValue)"
+            )
+        }
+
+        Thread.sleep(forTimeInterval: 0.1)
+        return try actionSnapshotResult(for: query)
     }
 
     public func typeText(app query: String, text: String) throws -> ToolCallResult {
         let snapshot = try currentSnapshot(for: query)
         if snapshot.mode == .fixture {
-            try FixtureBridge.post(FixtureCommand(kind: "type_text", identifier: "fixture-input", value: text))
-            Thread.sleep(forTimeInterval: 0.15)
-            return snapshotResult(for: try refreshSnapshot(for: query), style: .actionResult)
+            try FixtureBridge.postAndWaitForStateChange(
+                FixtureCommand(kind: "type_text", identifier: "fixture-input", value: text)
+            )
+            return try actionSnapshotResult(for: query)
         }
 
         if try typeTextBySettingFocusedValueIfAvailable(text, in: snapshot) {
             Thread.sleep(forTimeInterval: 0.1)
-            return snapshotResult(for: try refreshSnapshot(for: query), style: .actionResult)
+            return try actionSnapshotResult(for: query)
         }
 
         guard try canTypeTextUsingKeyboardFallback(in: snapshot) else {
@@ -688,19 +801,20 @@ public final class ComputerUseService {
         }
 
         try InputSimulation.typeText(text, pid: snapshot.app.pid)
-        return snapshotResult(for: try refreshSnapshot(for: query), style: .actionResult)
+        return try actionSnapshotResult(for: query)
     }
 
     public func pressKey(app query: String, key: String) throws -> ToolCallResult {
         let snapshot = try currentSnapshot(for: query)
         if snapshot.mode == .fixture {
-            try FixtureBridge.post(FixtureCommand(kind: "press_key", identifier: "fixture-key-capture", value: key))
-            Thread.sleep(forTimeInterval: 0.15)
-            return snapshotResult(for: try refreshSnapshot(for: query), style: .actionResult)
+            try FixtureBridge.postAndWaitForStateChange(
+                FixtureCommand(kind: "press_key", identifier: "fixture-key-capture", value: key)
+            )
+            return try actionSnapshotResult(for: query)
         }
 
         try InputSimulation.pressKey(key, pid: snapshot.app.pid)
-        return snapshotResult(for: try refreshSnapshot(for: query), style: .actionResult)
+        return try actionSnapshotResult(for: query)
     }
 
     public func setValue(app query: String, elementIndex: String, value: String) throws -> ToolCallResult {
@@ -714,10 +828,11 @@ public final class ComputerUseService {
 
             let cursorTarget = visualCursorTarget(for: record, snapshot: snapshot)
             moveVisualCursor(to: cursorTarget)
-            try FixtureBridge.post(FixtureCommand(kind: "set_value", identifier: identifier, value: value))
-            Thread.sleep(forTimeInterval: 0.15)
+            try FixtureBridge.postAndWaitForStateChange(
+                FixtureCommand(kind: "set_value", identifier: identifier, value: value)
+            )
             settleVisualCursor(at: cursorTarget)
-            return snapshotResult(for: try refreshSnapshot(for: query), style: .actionResult)
+            return try actionSnapshotResult(for: query)
         }
 
         guard let element = record.element else {
@@ -744,7 +859,7 @@ public final class ComputerUseService {
         }
 
         settleVisualCursor(at: cursorTarget)
-        return snapshotResult(for: try refreshSnapshot(for: query), style: .actionResult)
+        return try actionSnapshotResult(for: query)
     }
 
     private func currentSnapshot(for query: String) throws -> AppSnapshot {
@@ -755,22 +870,37 @@ public final class ComputerUseService {
         return try refreshSnapshot(for: query)
     }
 
+    private func actionSnapshotResult(for query: String) throws -> ToolCallResult {
+        let snapshot = try refreshSnapshot(for: query, captureScreenshot: false)
+        guard returnActionState else {
+            return ToolCallResult(content: [])
+        }
+
+        return presentedSnapshotResult(
+            for: snapshot,
+            query: query,
+            style: .actionResult,
+            disableDiff: false,
+            includeScreenshot: false
+        )
+    }
+
     @discardableResult
     private func refreshSnapshot(
         for query: String,
+        captureScreenshot: Bool = true,
         textLimit: SnapshotTextLimit = .defaults,
         treeLimits: AccessibilityTreeLimits = .defaults
     ) throws -> AppSnapshot {
         let app = try AppDiscovery.resolve(query)
-        let snapshot = try SnapshotBuilder.build(for: app, textLimit: textLimit, treeLimits: treeLimits)
+        let snapshot = try SnapshotBuilder.build(
+            for: app,
+            captureScreenshot: captureScreenshot,
+            textLimit: textLimit,
+            treeLimits: treeLimits
+        )
 
-        let keys = Set([
-            query.lowercased(),
-            app.name.lowercased(),
-            (app.bundleIdentifier ?? "").lowercased(),
-        ].filter { !$0.isEmpty })
-
-        for key in keys {
+        for key in cacheKeys(for: query, snapshot: snapshot) {
             snapshotsByApp[key] = snapshot
         }
 
@@ -1821,11 +1951,63 @@ public final class ComputerUseService {
         }
     }
 
-    private func snapshotResult(for snapshot: AppSnapshot, style: SnapshotTextStyle) -> ToolCallResult {
-        var content = [ToolResultContentItem.text(snapshot.renderedText(style: style))]
-        if let screenshotPNGData = snapshot.screenshotPNGData {
+    private func presentedSnapshotResult(
+        for snapshot: AppSnapshot,
+        query: String,
+        style: SnapshotTextStyle,
+        disableDiff: Bool,
+        includeScreenshot: Bool? = nil
+    ) -> ToolCallResult {
+        let shouldIncludeScreenshot: Bool
+        if let includeScreenshot {
+            shouldIncludeScreenshot = includeScreenshot
+        } else {
+            switch style {
+            case .fullState:
+                shouldIncludeScreenshot = true
+            case .actionResult:
+                shouldIncludeScreenshot = false
+            }
+        }
+
+        let fullText = snapshot.renderedText(style: style)
+        let keys = cacheKeys(for: query, snapshot: snapshot)
+        let previousText = keys.lazy.compactMap { self.presentedStatesByApp[$0] }.first
+        let presentedText = if disableDiff || previousText == nil {
+            fullText
+        } else {
+            renderAccessibilityStateDiff(previous: previousText!, current: fullText)
+        }
+
+        for key in keys {
+            presentedStatesByApp[key] = fullText
+        }
+
+        var content = [ToolResultContentItem.text(presentedText)]
+        if shouldIncludeScreenshot, let screenshotPNGData = snapshot.screenshotPNGData {
             content.append(.jpegImage(screenshotPNGData))
         }
         return ToolCallResult(content: content)
+    }
+
+    private func cacheKeys(for query: String, snapshot: AppSnapshot) -> Set<String> {
+        Set([
+            query.lowercased(),
+            snapshot.app.name.lowercased(),
+            (snapshot.app.bundleIdentifier ?? "").lowercased(),
+        ].filter { !$0.isEmpty })
+    }
+
+    private static func environmentFlag(_ value: String?) -> Bool {
+        guard let value else {
+            return false
+        }
+
+        switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "1", "true", "yes", "on":
+            return true
+        default:
+            return false
+        }
     }
 }

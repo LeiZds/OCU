@@ -1,0 +1,25 @@
+{
+  "name": "ocu",
+  "owner": {
+    "name": "Leo",
+    "url": "https://github.com/LeiZds"
+  },
+  "description": "Open Computer Use plugins adapted for multiple agent harnesses.",
+  "metadata": {
+    "version": "1.1.0-dev.1",
+    "description": "Open Computer Use plugins from LeiZds/OCU"
+  },
+  "plugins": [
+    {
+      "name": "open-computer-use",
+      "source": "./",
+      "category": "development",
+      "tags": [
+        "computer-use",
+        "mcp",
+        "desktop-automation"
+      ],
+      "strict": true
+    }
+  ]
+}

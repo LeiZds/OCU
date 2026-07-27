@@ -88,6 +88,8 @@ final class FixtureAppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDele
     private let dragPadView = DragPadView(frame: NSRect(x: 0, y: 0, width: 320, height: 120))
     private var scrollView: NSScrollView!
     private var counter = 0
+    private var selectedText: String?
+    private var lastCommandID: String?
     private weak var observedScrollView: NSScrollView?
     private var commandObserver: NSObjectProtocol?
     private var stateRefreshTimer: Timer?
@@ -300,15 +302,21 @@ final class FixtureAppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDele
         switch (command.kind, command.identifier) {
         case ("set_value", "fixture-input"):
             inputField.stringValue = command.value ?? ""
+            selectedText = nil
+            lastCommandID = command.commandID
             updateExportedState()
         case ("click", "fixture-increment"):
+            lastCommandID = command.commandID
             handleIncrement()
         case ("click", "fixture-input"):
             window.makeFirstResponder(inputField)
+            lastCommandID = command.commandID
             updateExportedState()
         case ("click", "fixture-key-capture"):
             window.makeFirstResponder(keyCaptureView)
             keyCaptureView.needsDisplay = true
+            selectedText = nil
+            lastCommandID = command.commandID
             updateExportedState()
         case ("scroll", "fixture-scroll-view"):
             let delta = CGFloat(120 * (command.pages ?? 1))
@@ -324,6 +332,7 @@ final class FixtureAppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDele
             }
             scrollView.contentView.scroll(to: CGPoint(x: current.x, y: nextY))
             scrollView.reflectScrolledClipView(scrollView.contentView)
+            lastCommandID = command.commandID
             updateExportedState()
         case ("drag", "fixture-drag-pad"):
             let startX = Int(command.x ?? 0)
@@ -331,15 +340,40 @@ final class FixtureAppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDele
             let endX = Int(command.toX ?? 0)
             let endY = Int(command.toY ?? 0)
             dragLabel.stringValue = "Last drag: from (\(startX), \(startY)) to (\(endX), \(endY))"
+            lastCommandID = command.commandID
             updateExportedState()
         case ("type_text", "fixture-input"):
             inputField.stringValue += command.value ?? ""
             window.makeFirstResponder(inputField)
+            selectedText = nil
+            lastCommandID = command.commandID
+            updateExportedState()
+        case ("select_text", "fixture-input"):
+            guard
+                let text = command.value,
+                let range = try? resolveTextSelectionRange(
+                    in: inputField.stringValue,
+                    text: text,
+                    prefix: command.prefix,
+                    suffix: command.suffix,
+                    selectionType: command.selectionType ?? TextSelectionType.text.rawValue
+                )
+            else {
+                return
+            }
+            window.makeFirstResponder(inputField)
+            inputField.currentEditor()?.selectedRange = range
+            selectedText = range.length == 0
+                ? nil
+                : (inputField.stringValue as NSString).substring(with: range)
+            lastCommandID = command.commandID
             updateExportedState()
         case ("press_key", "fixture-key-capture"):
             keyLabel.stringValue = "Last key: \(command.value ?? "unknown")"
             window.makeFirstResponder(keyCaptureView)
             keyCaptureView.needsDisplay = true
+            selectedText = nil
+            lastCommandID = command.commandID
             updateExportedState()
         default:
             break
@@ -351,10 +385,13 @@ final class FixtureAppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDele
             return
         }
 
+        let focusedIdentifier = focusedIdentifier()
         let state = FixtureAppState(
             windowTitle: window.title,
             windowBounds: FixtureRect(rect: windowBoundsInQuartzCoordinates()),
-            focusedIdentifier: focusedIdentifier(),
+            focusedIdentifier: focusedIdentifier,
+            selectedText: focusedIdentifier == "fixture-input" ? selectedText : nil,
+            lastCommandID: lastCommandID,
             elements: [
                 element(identifier: "fixture-window", index: 0, role: "standard window", title: window.title, value: nil, actions: ["Raise"], rect: CGRect(x: 0, y: 0, width: window.frame.width, height: window.frame.height)),
                 element(identifier: "fixture-increment", index: 1, role: "button", title: incrementButton.title, value: nil, actions: [], rect: localRect(for: incrementButton, in: contentView)),
