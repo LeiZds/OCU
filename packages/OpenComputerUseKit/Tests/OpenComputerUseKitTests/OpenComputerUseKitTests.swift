@@ -4,6 +4,54 @@ import XCTest
 @testable import OpenComputerUseKit
 
 final class OpenComputerUseKitTests: XCTestCase {
+    func testScrollTargetValueMovesOnePageInBothDirections() throws {
+        XCTAssertEqual(
+            try XCTUnwrap(scrollTargetValue(
+                currentValue: 0,
+                minimumValue: 0,
+                maximumValue: 1,
+                direction: "down",
+                pages: 1
+            )),
+            0.2,
+            accuracy: 0.000001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(scrollTargetValue(
+                currentValue: 0.2,
+                minimumValue: 0,
+                maximumValue: 1,
+                direction: "up",
+                pages: 1
+            )),
+            0,
+            accuracy: 0.000001
+        )
+    }
+
+    func testScrollTargetValueClampsAtRangeEdges() throws {
+        XCTAssertEqual(
+            try XCTUnwrap(scrollTargetValue(
+                currentValue: 0.9,
+                minimumValue: 0,
+                maximumValue: 1,
+                direction: "down",
+                pages: 3
+            )),
+            1,
+            accuracy: 0.000001
+        )
+        XCTAssertNil(
+            scrollTargetValue(
+                currentValue: 1,
+                minimumValue: 0,
+                maximumValue: 1,
+                direction: "down",
+                pages: 1
+            )
+        )
+    }
+
     func testCLIRecognizesGlobalHelpAndVersionFlags() throws {
         XCTAssertEqual(try parseOpenComputerUseCLI(arguments: ["-h"]), .help(command: nil))
         XCTAssertEqual(try parseOpenComputerUseCLI(arguments: ["--help"]), .help(command: nil))

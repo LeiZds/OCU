@@ -4,6 +4,11 @@ import Foundation
 import OpenComputerUseKit
 
 @MainActor
+final class FlippedStackView: NSStackView {
+    override var isFlipped: Bool { true }
+}
+
+@MainActor
 final class KeyCaptureView: NSView {
     var onKey: ((String) -> Void)?
 
@@ -90,7 +95,6 @@ final class FixtureAppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDele
     private var counter = 0
     private var selectedText: String?
     private var lastCommandID: String?
-    private weak var observedScrollView: NSScrollView?
     private var commandObserver: NSObjectProtocol?
     private var stateRefreshTimer: Timer?
     private let headless: Bool
@@ -211,6 +215,12 @@ final class FixtureAppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDele
         } else {
             window.makeKeyAndOrderFront(nil)
         }
+
+        contentView.layoutSubtreeIfNeeded()
+        scrollView.documentView?.layoutSubtreeIfNeeded()
+        scrollView.contentView.scroll(to: .zero)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        refreshScrollLabel()
     }
 
     @objc
@@ -229,12 +239,7 @@ final class FixtureAppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDele
 
     @objc
     private func handleScrollBoundsChanged(_ notification: Notification) {
-        guard let scrollView = observedScrollView else {
-            return
-        }
-
-        let offset = Int(scrollView.contentView.bounds.origin.y)
-        scrollLabel.stringValue = "Scroll offset: \(offset)"
+        refreshScrollLabel()
         updateExportedState()
     }
 
@@ -247,7 +252,7 @@ final class FixtureAppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDele
     }
 
     private func makeScrollView() -> NSScrollView {
-        let documentView = NSStackView()
+        let documentView = FlippedStackView()
         documentView.orientation = .vertical
         documentView.alignment = .leading
         documentView.spacing = 8
@@ -267,7 +272,6 @@ final class FixtureAppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDele
         scrollView.hasVerticalScroller = true
         scrollView.contentView = clipView
         scrollView.documentView = documentView
-        observedScrollView = scrollView
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleScrollBoundsChanged(_:)),
@@ -385,6 +389,7 @@ final class FixtureAppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDele
             return
         }
 
+        refreshScrollLabel()
         let focusedIdentifier = focusedIdentifier()
         let state = FixtureAppState(
             windowTitle: window.title,
@@ -407,6 +412,14 @@ final class FixtureAppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDele
         )
 
         try? FixtureBridge.writeState(state)
+    }
+
+    private func refreshScrollLabel() {
+        guard let scrollView else {
+            return
+        }
+        let offset = Int(scrollView.contentView.bounds.origin.y.rounded())
+        scrollLabel.stringValue = "Scroll offset: \(offset)"
     }
 
     private func exportedSelectedText(focusedIdentifier: String?) -> String? {

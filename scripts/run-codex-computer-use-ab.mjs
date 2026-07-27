@@ -60,7 +60,7 @@ const runId =
 const outputDir = path.join(repoRoot, "artifacts/harness-ab/runs", runId);
 const candidateLauncher = candidateVersion === "v1.0"
   ? path.join(repoRoot, "scripts/run-ocu-v1-baseline.sh")
-  : path.join(repoRoot, "scripts/launch-open-computer-use-codex.sh");
+  : path.join(repoRoot, "scripts/launch-open-computer-use-codex-ab.sh");
 const officialBaselinePath = path.join(
   repoRoot,
   "tests/harness/baselines/codex-official-1.0.1000502.json",
@@ -713,6 +713,22 @@ function validateRun({
 }) {
   const taskFailures = [];
   const methodFailures = [];
+  const processOutput = `${processResult.stdout}\n${processResult.stderr}`;
+  const infrastructureFailure = [
+    /You've hit your usage limit/i,
+    /try again at .+usage/i,
+    /rate limit(?:ed| exceeded)?/i,
+    /insufficient quota/i,
+  ].find((pattern) => pattern.test(processOutput));
+  if (infrastructureFailure) {
+    return {
+      valid: false,
+      success: false,
+      taskCompleted: false,
+      methodConformance: false,
+      failures: ["Codex test infrastructure was unavailable because its usage limit was reached"],
+    };
+  }
   const backendUnavailable = parsed.toolCalls.length === 0 && (
     arm === "ocu"
       ? /未提供\s*open-computer-use|open-computer-use.+not (?:available|provided)/i.test(
@@ -1000,6 +1016,17 @@ async function startFixture() {
     if (existsSync(fixtureStatePath())) {
       try {
         readFixtureState();
+        await delay(650);
+        const settledState = readFixtureState();
+        const scrollStatus = settledState.elements?.find(
+          (element) => element.identifier === "fixture-scroll-status",
+        )?.value;
+        if (scrollStatus !== "Scroll offset: 0") {
+          child.kill("SIGTERM");
+          fail(
+            `Fixture initial scroll invariant failed: expected Scroll offset: 0, got ${scrollStatus}.`,
+          );
+        }
         return child;
       } catch {}
     }

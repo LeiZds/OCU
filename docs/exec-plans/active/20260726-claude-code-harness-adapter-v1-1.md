@@ -201,7 +201,7 @@ Bindings（只保存组合特例）
 - [x] 建立唯一 V1.0 可复现运行入口；哈希门禁确认 Runtime `0.2.1`、MCP instructions `2028` 字符及 9 工具真实协议面。
 - [x] 完成 Codex 内部 V1.0 首轮基线配对与暂定评分；剩余场景继续作为 V1.1 回归覆盖，不用当前样本宣称统计等价。
 - [x] 实现十工具 parity、紧凑指令和 Claude 插件包装。
-- [ ] 完成 Codex V1.1 回归。
+- [ ] 完成 Codex V1.1 回归（首轮五场景已采集；四组保留为有效描述性样本，滚动组因 fixture 初始位置错误作废并已修复；剩余重复样本受本机 Codex 额度窗口暂时限制）。
 - [ ] 完成 Claude Code + DeepSeek 黑盒回归（TRAE CN 仅作启动和观察界面）。
 - [ ] 更新版本、history、安装说明并直接推送 GitHub。
 
@@ -229,3 +229,7 @@ Bindings（只保存组合特例）
 - 2026-07-27：同一审计发现 Swift 编译失败后 App 打包脚本仍可能签名旧二进制。构建函数现显式传播失败并检查可执行产物，避免错误版本进入后续 A/B。
 - 2026-07-27：V1.1 Codex 配对运行器增加候选 commit/二进制/Skill 哈希门禁、固定模型与推理强度、进程树 CPU/RSS 采样，并把 `select_text` 重复词歧义消解升级为真实 AX 自动化场景。
 - 2026-07-27：`select_text` 单臂校准中，OCU V1.1 以 5 次调用直接完成；官方首次把 `set_value + select_text` 放在同一 JS block，第二步因状态尚未刷新失败，随后读取状态并恢复完成。正式评分继续使用外部 fixture oracle，同时把失败调用和恢复成本单独计入，不因组合 block 的整体失败状态否认已经生效的第一步。
+- 2026-07-27：V1.1 首轮正式配对中，`list_apps`、基础真实 AX、Unicode 焦点和重复文本选择四组样本可用；OCU 四组均完成任务和方法约束，官方 Unicode 最终状态正确但在 33 次调用后只能用 `set_value` 收尾，未满足 `type_text` 方法约束。样本仍少于 30 个，不作统计等价结论。
+- 2026-07-27：长页面样本复盘发现 fixture 标签显示 offset 0 时系统 scrollbar 实际位于底部；fixture 改为 flipped document view、启动时强制归零，并把真实 bounds offset作为导出状态。修复后官方 `scroll(down, 1)` 一次把 offset 从 0 推到 150。
+- 2026-07-27：OCU 对真实 scroll area 会忽略 `AXScrollDownByPage` 的无效/无变化结果并误报成功。Runtime 现优先对 settable AX scrollbar 做可观察的页步长调整，再回退到 AX action 和 pid-targeted event；确定性测试证明 down 从 0 到 0.2/offset 161，up 可回到 0，全程不需要全局物理指针。
+- 2026-07-27：A/B 候选启动器曾优先选择已打包 `dist`，而报告身份校验的是 `.build/release`。新增测试专用启动器，正式样本只运行刚构建并校验哈希的候选二进制；Codex 使用额度不足也改记为 infrastructure-invalid，不再污染产品失败率。

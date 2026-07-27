@@ -46,6 +46,34 @@ func validateClickMethod(
     }
 }
 
+func scrollTargetValue(
+    currentValue: Double,
+    minimumValue: Double,
+    maximumValue: Double,
+    direction: String,
+    pages: Double
+) -> Double? {
+    guard maximumValue > minimumValue, pages.isFinite, pages > 0 else {
+        return nil
+    }
+
+    let directionMultiplier = direction == "down" || direction == "right"
+        ? 1.0
+        : -1.0
+    let pageFraction = min(max(0.2 * pages, 0.01), 1.0)
+    let targetValue = min(
+        maximumValue,
+        max(
+            minimumValue,
+            currentValue +
+                directionMultiplier * (maximumValue - minimumValue) * pageFraction
+        )
+    )
+    return abs(targetValue - currentValue) >= 0.000001
+        ? targetValue
+        : nil
+}
+
 struct VisualCursorScreenMapping: Equatable {
     let screenStateFrame: CGRect
     let appKitFrame: CGRect
@@ -656,14 +684,59 @@ public final class ComputerUseService {
             return try actionSnapshotResult(for: query)
         }
 
-        if let repeatCount = integralScrollPageCount(pages),
+        let initialScrollPosition = record.element.flatMap {
+            scrollPosition(for: $0, direction: normalized)
+        }
+        let initialScrollDescription = initialScrollPosition.map { String($0) } ?? "nil"
+        debugScrollDecision(
+            "index=\(elementIndex) direction=\(normalized) initial=\(initialScrollDescription) actions=[\(record.rawActions.joined(separator: ","))]"
+        )
+        var handledScroll = false
+        if let element = record.element,
+           try setScrollPosition(
+               for: element,
+               direction: normalized,
+               pages: pages
+           )
+        {
+            handledScroll = true
+            let updatedScrollDescription = scrollPosition(
+                for: element,
+                direction: normalized
+            ).map { String($0) } ?? "nil"
+            debugScrollDecision(
+                "AXValue handled=true updated=\(updatedScrollDescription)"
+            )
+        }
+
+        if !handledScroll,
+           let repeatCount = integralScrollPageCount(pages),
            let rawAction = record.rawActions.first(where: { $0.caseInsensitiveCompare("AXScroll\(normalized.capitalized)ByPage") == .orderedSame }),
-           let element = record.element {
-            for _ in 0..<repeatCount {
-                _ = AXUIElementPerformAction(element, rawAction as CFString)
-                Thread.sleep(forTimeInterval: 0.05)
+           let element = record.element
+        {
+            handledScroll = try performAction(
+                named: rawAction,
+                on: element,
+                availableActions: record.rawActions,
+                repeatCount: repeatCount
+            )
+            if handledScroll,
+               let initialScrollPosition,
+               let updatedScrollPosition = scrollPosition(for: element, direction: normalized),
+               abs(updatedScrollPosition - initialScrollPosition) < 0.000001
+            {
+                handledScroll = false
             }
-        } else if let point = try globalPoint(for: record, snapshot: snapshot) {
+            let updatedScrollDescription = scrollPosition(
+                for: element,
+                direction: normalized
+            ).map { String($0) } ?? "nil"
+            debugScrollDecision(
+                "AX action=\(rawAction) handled=\(handledScroll) updated=\(updatedScrollDescription)"
+            )
+        }
+
+        if !handledScroll, let point = try globalPoint(for: record, snapshot: snapshot) {
             try performScrollEvent(
                 at: point,
                 direction: normalized,
@@ -671,7 +744,7 @@ public final class ComputerUseService {
                 targetDescription: "element_index=\(elementIndex)",
                 snapshot: snapshot
             )
-        } else {
+        } else if !handledScroll {
             throw ComputerUseError.stateUnavailable("element \(elementIndex) has no scrollable frame")
         }
 
@@ -1818,6 +1891,14 @@ public final class ComputerUseService {
         fputs("[open-computer-use] click decision \(message)\n", stderr)
     }
 
+    private func debugScrollDecision(_ message: String) {
+        guard inputFallbackDebugEnabled(environment: ProcessInfo.processInfo.environment) else {
+            return
+        }
+
+        fputs("[open-computer-use] scroll decision \(message)\n", stderr)
+    }
+
     private func clickDebugDescription(_ record: ElementRecord) -> String {
         let role = record.element.flatMap { stringValue(of: $0, attribute: kAXRoleAttribute) } ?? "nil"
         let actions = record.rawActions.joined(separator: ",")
@@ -1831,6 +1912,133 @@ public final class ComputerUseService {
             return nil
         }
         return max(Int(rounded), 1)
+    }
+
+    private func scrollPosition(for element: AXUIElement, direction: String) -> Double? {
+        guard let scrollBar = scrollBar(for: element, direction: direction) else {
+            return nil
+        }
+        return numericValue(of: scrollBar, attribute: kAXValueAttribute as String)
+    }
+
+    private func setScrollPosition(
+        for element: AXUIElement,
+        direction: String,
+        pages: Double
+    ) throws -> Bool {
+        guard let scrollBar = scrollBar(for: element, direction: direction),
+              isSettable(element: scrollBar, attribute: kAXValueAttribute as String),
+              let currentValue = numericValue(
+                  of: scrollBar,
+                  attribute: kAXValueAttribute as String
+              )
+        else {
+            return false
+        }
+
+        let minimumValue = numericValue(
+            of: scrollBar,
+            attribute: kAXMinValueAttribute as String
+        ) ?? 0
+        let maximumValue = numericValue(
+            of: scrollBar,
+            attribute: kAXMaxValueAttribute as String
+        ) ?? 1
+        guard maximumValue > minimumValue else {
+            return false
+        }
+
+        guard let targetValue = scrollTargetValue(
+            currentValue: currentValue,
+            minimumValue: minimumValue,
+            maximumValue: maximumValue,
+            direction: direction,
+            pages: pages
+        ) else {
+            return false
+        }
+
+        let result = AXUIElementSetAttributeValue(
+            scrollBar,
+            kAXValueAttribute as CFString,
+            NSNumber(value: targetValue)
+        )
+        switch result {
+        case .success:
+            Thread.sleep(forTimeInterval: 0.15)
+            return true
+        case .failure, .attributeUnsupported, .actionUnsupported, .cannotComplete,
+             .noValue, .invalidUIElement, .illegalArgument:
+            return false
+        default:
+            throw ComputerUseError.message(
+                "AXUIElementSetAttributeValue(AXValue) failed with \(result.rawValue)"
+            )
+        }
+    }
+
+    private func scrollBar(for element: AXUIElement, direction: String) -> AXUIElement? {
+        let attribute = direction == "up" || direction == "down"
+            ? kAXVerticalScrollBarAttribute as String
+            : kAXHorizontalScrollBarAttribute as String
+        if let direct = copyElement(of: element, attribute: attribute) {
+            return direct
+        }
+
+        return descendant(
+            of: element,
+            role: kAXScrollBarRole as String,
+            maximumDepth: 4
+        )
+    }
+
+    private func copyElement(of element: AXUIElement, attribute: String) -> AXUIElement? {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(
+            element,
+            attribute as CFString,
+            &value
+        )
+        guard result == .success, let value else {
+            return nil
+        }
+        return (value as! AXUIElement)
+    }
+
+    private func numericValue(of element: AXUIElement, attribute: String) -> Double? {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(
+            element,
+            attribute as CFString,
+            &value
+        )
+        guard result == .success, let number = value as? NSNumber else {
+            return nil
+        }
+        return number.doubleValue
+    }
+
+    private func descendant(
+        of element: AXUIElement,
+        role: String,
+        maximumDepth: Int
+    ) -> AXUIElement? {
+        guard maximumDepth > 0 else {
+            return nil
+        }
+        for child in copyChildren(of: element) {
+            if stringValue(of: child, attribute: kAXRoleAttribute) == role {
+                return child
+            }
+            if let nested = descendant(
+                of: child,
+                role: role,
+                maximumDepth: maximumDepth - 1
+            ) {
+                return nested
+            }
+        }
+        return nil
     }
 
     private func performScrollEvent(
