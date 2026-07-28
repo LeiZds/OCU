@@ -2,9 +2,9 @@
 
 [![English](https://img.shields.io/badge/English-Click-yellow)](./README.md)
 [![简体中文](https://img.shields.io/badge/简体中文-点击查看-orange)](./README.zh-CN.md)
-[![Release](https://img.shields.io/github/v/release/iFurySt/open-codex-computer-use)](https://github.com/iFurySt/open-codex-computer-use/releases)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/iFurySt/open-codex-computer-use)
-<a href="https://llmapis.com?source=https%3A%2F%2Fgithub.com%2FiFurySt%2Fopen-codex-computer-use" target="_blank"><img src="https://llmapis.com/api/badge/iFurySt/open-codex-computer-use" alt="LLMAPIS" width="20" /></a>
+[![Release](https://img.shields.io/github/v/release/LeiZds/OCU)](https://github.com/LeiZds/OCU/releases)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/LeiZds/OCU)
+<a href="https://llmapis.com?source=https%3A%2F%2Fgithub.com%2FLeiZds%2FOCU" target="_blank"><img src="https://llmapis.com/api/badge/LeiZds/OCU" alt="LLMAPIS" width="20" /></a>
 
 > [!TIP]
 > 对 Browser Use 感兴趣的话，可以看看 [open-browser-use](https://github.com/iFurySt/open-codex-browser-use)。
@@ -13,9 +13,12 @@
 
 `open-computer-use` 是一个开源的 `Computer Use` 服务，已经包装成 `MCP` 协议，支持所有的 AI Agent 或 MCP Client 快速调用，实现 macOS、Linux 和 Windows 上的 `Computer Use` 能力。
 
-项目的背后是 OpenAI 刚发布的 [Codex Computer Use](https://openai.com/index/codex-for-almost-everything/)，让我看到了基于 Accessibility 可以实现非抢占式 CUA 能力，因此决定复刻一个开源版本
-
-在这期间我利用了之前写的 [harness 模版](https://github.com/iFurySt/harness-template) 开启了这个新项目。这是一个可以快速拉起面向 AI 仓库的 template，非常适合 100% AI-Generated 的项目，也是这一个月来我们最大的实践和收获。现在我们可以基于这套方法论快速实现很多东西；如果你有兴趣，我也写了一篇[文章](https://www.ifuryst.com/blog/2026/speedrunning-the-ai-era/)专门介绍这套方法论
+这个定制版本基于
+[iFurySt/open-codex-computer-use](https://github.com/iFurySt/open-codex-computer-use)，
+继续保留原项目的 MIT 许可证和署名。当前仓库的 V1.1 在此基础上增加了
+Runtime、Host Adapter、Model Profile 和 Binding 的分层适配架构。原项目受
+OpenAI [Codex Computer Use](https://openai.com/index/codex-for-almost-everything/)
+启发。
 
 ## 演示
 
@@ -82,13 +85,13 @@ ocu install-codex-mcp
 
 ```bash
 # 安装到 Codex
-npx skills add iFurySt/open-codex-computer-use -g -a codex --skill open-computer-use -y
+npx skills add LeiZds/OCU -g -a codex --skill open-computer-use -y
 npx skills ls -g -a codex | rg 'open-computer-use'
 ```
 
 安装到 Claude Code
 ```
-npx skills add iFurySt/open-codex-computer-use -g -a claude-code --skill open-computer-use -y
+npx skills add LeiZds/OCU -g -a claude-code --skill open-computer-use -y
 ```
 
 直接从本 GitHub 仓库安装完整的 V1.1 Claude Code 插件
@@ -161,7 +164,7 @@ Cursor Motion 是一个面向 macOS 的开源光标运动系统，基于 Softwar
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=iFurySt%2Fopen-codex-computer-use&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=LeiZds%2FOCU&type=date&legend=top-left">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ifuryst/open-codex-computer-use&type=date&theme=dark&legend=top-left" />
     <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ifuryst/open-codex-computer-use&type=date&legend=top-left" />

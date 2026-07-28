@@ -128,8 +128,8 @@ gh release view v0.1.14 --json body,url
 ### 1. 先看最新 run
 
 ```bash
-gh run list -R iFurySt/open-codex-computer-use --limit 10
-gh run view -R iFurySt/open-codex-computer-use <run-id> --log-failed
+gh run list -R LeiZds/OCU --limit 10
+gh run view -R LeiZds/OCU <run-id> --log-failed
 ```
 
 ### 2. 重点看哪一类错误

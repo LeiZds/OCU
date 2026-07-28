@@ -2,9 +2,9 @@
 
 [![English](https://img.shields.io/badge/English-Click-yellow)](./README.md)
 [![简体中文](https://img.shields.io/badge/简体中文-点击查看-orange)](./README.zh-CN.md)
-[![Release](https://img.shields.io/github/v/release/iFurySt/open-codex-computer-use)](https://github.com/iFurySt/open-codex-computer-use/releases)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/iFurySt/open-codex-computer-use)
-<a href="https://llmapis.com?source=https%3A%2F%2Fgithub.com%2FiFurySt%2Fopen-codex-computer-use" target="_blank"><img src="https://llmapis.com/api/badge/iFurySt/open-codex-computer-use" alt="LLMAPIS" width="20" /></a>
+[![Release](https://img.shields.io/github/v/release/LeiZds/OCU)](https://github.com/LeiZds/OCU/releases)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/LeiZds/OCU)
+<a href="https://llmapis.com?source=https%3A%2F%2Fgithub.com%2FLeiZds%2FOCU" target="_blank"><img src="https://llmapis.com/api/badge/LeiZds/OCU" alt="LLMAPIS" width="20" /></a>
 
 > [!TIP]
 > Interested in Browser Use? Check out [open-browser-use](https://github.com/iFurySt/open-codex-browser-use).
@@ -13,9 +13,12 @@
 
 `open-computer-use` is an open-source `Computer Use` service wrapped as `MCP`. Any AI agent or MCP client can use it to run Computer Use on macOS, Linux, and Windows.
 
-This project was inspired by OpenAI's [Codex Computer Use](https://openai.com/index/codex-for-almost-everything/). It showed that non-intrusive CUA can be built on top of Accessibility, so I decided to build an open-source version.
-
-I started this repo with my [harness template](https://github.com/iFurySt/harness-template), a template for quickly spinning up AI-first projects. It has been one of our most useful workflows lately, especially for nearly 100% AI-generated projects. I also wrote [a post](https://www.ifuryst.com/blog/2026/speedrunning-the-ai-era/) about the methodology behind it.
+This customized distribution is based on
+[iFurySt/open-codex-computer-use](https://github.com/iFurySt/open-codex-computer-use)
+and retains its MIT license and attribution. V1.1 adds the layered Runtime,
+Host Adapter, Model Profile, and Binding architecture used by this repository.
+The upstream project was inspired by OpenAI's
+[Codex Computer Use](https://openai.com/index/codex-for-almost-everything/).
 
 ## Demos
 
@@ -82,14 +85,14 @@ Install the skill directly:
 
 ```bash
 # Install for Codex
-npx skills add iFurySt/open-codex-computer-use -g -a codex --skill open-computer-use -y
+npx skills add LeiZds/OCU -g -a codex --skill open-computer-use -y
 npx skills ls -g -a codex | rg 'open-computer-use'
 ```
 
 Install for Claude Code:
 
 ```bash
-npx skills add iFurySt/open-codex-computer-use -g -a claude-code --skill open-computer-use -y
+npx skills add LeiZds/OCU -g -a claude-code --skill open-computer-use -y
 ```
 
 Install the complete V1.1 Claude Code plugin directly from this GitHub repository
@@ -177,7 +180,7 @@ Cursor Motion is an open-source cursor motion system for macOS, based on public 
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=iFurySt%2Fopen-codex-computer-use&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=LeiZds%2FOCU&type=date&legend=top-left">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ifuryst/open-codex-computer-use&type=date&theme=dark&legend=top-left" />
     <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ifuryst/open-codex-computer-use&type=date&legend=top-left" />

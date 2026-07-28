@@ -51,6 +51,29 @@ if ! grep -q "docs/" "${repo_root}/AGENTS.md"; then
   missing=1
 fi
 
+for path in README.md README.zh-CN.md skills/open-computer-use/references/installation.md; do
+  if ! grep -q "npx skills add LeiZds/OCU" "${repo_root}/${path}"; then
+    echo "${path} 应从 LeiZds/OCU 安装 Skill"
+    missing=1
+  fi
+  if grep -q "npx skills add iFurySt/open-codex-computer-use" "${repo_root}/${path}"; then
+    echo "${path} 的安装命令仍会装回上游版本"
+    missing=1
+  fi
+done
+
+for path in README.md README.zh-CN.md; do
+  if ! grep -q "claude plugin marketplace add https://github.com/LeiZds/OCU" "${repo_root}/${path}"; then
+    echo "${path} 缺少 LeiZds/OCU 的 Claude Code 完整插件安装命令"
+    missing=1
+  fi
+done
+
+if ! grep -q 'Source repository: https://github.com/LeiZds/OCU' "${repo_root}/scripts/npm/build-packages.mjs"; then
+  echo "npm 产物元数据应指向 LeiZds/OCU"
+  missing=1
+fi
+
 if [[ "${missing}" -ne 0 ]]; then
   exit 1
 fi
