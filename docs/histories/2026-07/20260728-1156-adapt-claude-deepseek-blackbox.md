@@ -20,6 +20,7 @@
 - **[Editable focus]**: click 的语义焦点 fallback 扩展到文本字段、文本区域、文本视图和组合框，为后续 `type_text` 保留真实输入路径。
 - **[Editable focus ordering]**: 可编辑控件在附近命中测试之前优先设置 `AXFocused`，避免命中窗口 Raise 后提前返回并丢失文本焦点。
 - **[Harness circuit breaker]**: Claude 插件增加 PreToolUse/PostToolUse/PostToolUseFailure 会话守卫，拒绝已产生两次相同结果的相同调用、连续错误（包括未产生正常工具结果的直接失败）和极端总调用；Stop Hook 只校正用户明确要求的精确最终标记。
+- **[No false success]**: Stop Hook 只在至少存在一次成功 OCU 证据、整轮没有失败调用且模型自己已经输出目标标记时移除多余叙述；权限错误等失败回复不会再被改写成成功标记。
 - **[Tool namespace]**: Claude 插件 MCP server 缩短为 `ocu`，并要求 DeepSeek 只选择 Harness 暴露的精确工具名，禁止重拼命名空间。
 - **[Unicode fidelity]**: DeepSeek Profile 要求保留精确 Unicode code point 与 normalization；测试提示显式区分 U+0065 U+0301 和 U+00E9。
 - **[Permission identity]**: 定位到相同 Dev Bundle ID 与 ad-hoc CDHash 导致的 TCC 身份混淆；当前候选路径已显式加入 Accessibility 与 Screen Recording，稳定签名被列为发布门禁。
@@ -52,4 +53,5 @@ Claude Code Harness、DeepSeek 和 OCU 必须分别可观测。最终回复不�
 - 基础、Unicode、重复文本选择、长页面滚动复测分别以 4、5、4、3 次调用通过。
 - 真实循环守卫验证：前三次相同状态读取允许，第四次在执行前被 Harness 拒绝。
 - Hook 单元回归确认连续两个 `PostToolUseFailure` 会让下一次 OCU 调用在执行前被拒绝。
+- 权限缺失实测暴露 Stop Hook 曾在工具失败后强制输出成功标记；定向回归现确认失败回复保持失败，不产生目标标记。
 - `swift test --filter OpenComputerUseKitTests.testActivationOnlyClickFallbackKeepsEditableFocusPaths` 仍被仓库既有 Swift/XCTest 工具链问题阻断：`StandaloneCursorSupportTests` 无法加载 `XCTest`。

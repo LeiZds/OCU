@@ -136,6 +136,15 @@ function handleStop() {
     return;
   }
 
+  const completed = state.calls.filter((call) => call.resultHash);
+  if (
+    completed.length === 0 ||
+    completed.some((call) => call.failed) ||
+    !latest.includes(expected)
+  ) {
+    return;
+  }
+
   if (state.stopCorrections >= 1) {
     return;
   }

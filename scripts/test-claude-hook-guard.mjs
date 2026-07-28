@@ -115,6 +115,19 @@ try {
     session_id: sessionID,
     prompt: "Reply exactly OCU_EXACT_OK.",
   });
+  run({
+    hook_event_name: "PreToolUse",
+    session_id: sessionID,
+    tool_name: toolName,
+    tool_input: { app: "Fixture", disable_screenshot: true },
+  });
+  run({
+    hook_event_name: "PostToolUse",
+    session_id: sessionID,
+    tool_name: toolName,
+    tool_input: { app: "Fixture", disable_screenshot: true },
+    tool_result: "App=Fixture\nTask evidence is present.",
+  });
   writeFileSync(
     transcriptPath,
     `${JSON.stringify({
@@ -154,6 +167,43 @@ try {
     transcript_path: transcriptPath,
   });
   assert.equal(stopAllowed.stdout, "");
+
+  run({
+    hook_event_name: "UserPromptSubmit",
+    session_id: sessionID,
+    prompt: "Reply exactly SHOULD_NOT_APPEAR.",
+  });
+  run({
+    hook_event_name: "PreToolUse",
+    session_id: sessionID,
+    tool_name: toolName,
+    tool_input: { app: "Fixture", disable_screenshot: true },
+  });
+  run({
+    hook_event_name: "PostToolUseFailure",
+    session_id: sessionID,
+    tool_name: toolName,
+    tool_input: { app: "Fixture", disable_screenshot: true },
+    error: "Accessibility permission denied",
+  });
+  writeFileSync(
+    transcriptPath,
+    `${JSON.stringify({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Accessibility permission denied." },
+        ],
+      },
+    })}\n`,
+  );
+  const failedStopAllowed = run({
+    hook_event_name: "Stop",
+    session_id: sessionID,
+    transcript_path: transcriptPath,
+  });
+  assert.equal(failedStopAllowed.stdout, "");
 
   process.stdout.write("Claude OCU hook guard checks passed.\n");
 } finally {
