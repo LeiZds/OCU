@@ -233,3 +233,14 @@ Bindings（只保存组合特例）
 - 2026-07-27：长页面样本复盘发现 fixture 标签显示 offset 0 时系统 scrollbar 实际位于底部；fixture 改为 flipped document view、启动时强制归零，并把真实 bounds offset作为导出状态。修复后官方 `scroll(down, 1)` 一次把 offset 从 0 推到 150。
 - 2026-07-27：OCU 对真实 scroll area 会忽略 `AXScrollDownByPage` 的无效/无变化结果并误报成功。Runtime 现优先对 settable AX scrollbar 做可观察的页步长调整，再回退到 AX action 和 pid-targeted event；确定性测试证明 down 从 0 到 0.2/offset 161，up 可回到 0，全程不需要全局物理指针。
 - 2026-07-27：A/B 候选启动器曾优先选择已打包 `dist`，而报告身份校验的是 `.build/release`。新增测试专用启动器，正式样本只运行刚构建并校验哈希的候选二进制；Codex 使用额度不足也改记为 infrastructure-invalid，不再污染产品失败率。
+- 2026-07-28：Claude Code `2.1.218` 的 print 模式在 `--bare` 下只加载插件元数据，不注入插件 MCP；DeepSeek 因而尝试 `Bash("ocu list_apps")`，失败后仍错误宣布成功。隔离运行器现明确禁用该组合，使用 project-only setting sources，并要求初始化事件中只能有一个已连接的 V1.1 插件 MCP。
+- 2026-07-28：A/B 运行器新增 `claude` arm，真实解析 Claude stream-json；成功必须同时满足目标工具调用、无工具错误、外部 fixture 状态和最终格式，不能再用最终文本中的成功标记代替工具证据。
+- 2026-07-28：Claude Code + DeepSeek 首轮隔离黑盒覆盖 `list-apps`、基础填值点击、重复文本选择、Unicode 焦点输入和长页面滚动。前四个可完成任务；基础、选择和滚动均使用最短语义路径，Unicode 因文本字段没有真正获得焦点导致 `type_text` 失败后用 `set_value` 恢复。DeepSeek 在所有动作样本中都给精确标记附加了总结，因此方法一致性未通过。
+- 2026-07-28：权限缺失样本中，DeepSeek 在首个不可重试错误后又读取三次并尝试 `list_apps`。Runtime 权限错误现携带“环境不变时不可重试”的明确停止门，Claude Code × DeepSeek Binding 要求不再调用 OCU；DeepSeek Profile 增加精确最终标记单独输出规则。组合指令为 2026 UTF-8 字节，仍低于 Claude 的 2048 字节预算。
+- 2026-07-28：真实 Unicode 样本证明 `click(element_index=text-field)` 只保持窗口焦点，未让可编辑控件获得 AX 焦点。Runtime 的无动作 click fallback 已扩展到 `AXTextField`、`AXTextArea`、`AXTextView` 和 `AXComboBox`，以便后续 `type_text` 走真实焦点路径；候选 App 重建后的实时复测仍待完成。
+- 2026-07-28：本机存在两个相同 `com.ifuryst.opencomputeruse.dev` Bundle ID 的旧/新 App，且 Dev App 使用 ad-hoc CDHash 签名，造成 TCC 条目看似开启但当前进程仍无权限。当前 V1.1 路径已显式加入 Accessibility 与 Screen Recording；每次重建 Dev App 仍可能改变 CDHash，发布前必须把稳定签名/权限身份作为独立门禁。
+- 2026-07-28：Unicode 焦点失控样本曾达到 37 次 OCU 调用、180 秒超时、峰值 121.8% CPU 和 433 MB RSS。根因是可编辑控件命中测试先对窗口执行 Raise 并提前返回；Runtime 现优先设置文本控件 `AXFocused`，同一任务以 `get_state → set_value → click → type_text → get_state` 五步、17.4 秒完成。
+- 2026-07-28：Claude Code 插件新增会话级 Harness Hook。相同输入产生两次相同结果后拒绝下一次调用；连续两次错误或 30 次总调用触发停止门；用户明确要求精确最终标记时，Stop Hook 最多校正一次。真实四次无变化读取验证第四次被拒绝。
+- 2026-07-28：Claude Code 直接失败的工具调用不会触发 `PostToolUse`，而是触发 `PostToolUseFailure`。插件已同时订阅两类完成事件，连续失败门不再依赖工具返回正常结果；定向回归确认两个直接失败后下一次调用会在执行前被拒绝。
+- 2026-07-28：Claude 插件 MCP server 从重复的 `open-computer-use` 缩短为 `ocu`。DeepSeek 曾把暴露名中的下划线/连字符重拼三次；Host Adapter 与测试提示现要求只选择 Harness 已暴露的精确名称。复测基础、Unicode、重复文本选择和滚动分别以 4、5、4、3 次调用通过。
+- 2026-07-28：系统设置授权操作中，Codex 官方 Computer Use 的可见结构索引与实际命中曾不一致，误移除“豆包”辅助功能条目；已立即恢复应用条目并还原原来的关闭状态。此后权限操作只使用目标 Bundle ID 的 `tccutil reset`、明确的添加按钮和完整 App 路径，不再按列表行执行删除。

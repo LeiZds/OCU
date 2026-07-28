@@ -346,6 +346,18 @@ func canUseActivationOnlyClickFallback(role: String?) -> Bool {
     }
 
     return role == kAXWindowRole as String
+        || isEditableFocusRole(role)
+}
+
+func isEditableFocusRole(_ role: String?) -> Bool {
+    guard let role else {
+        return false
+    }
+
+    return role == kAXTextFieldRole as String
+        || role == "AXTextArea"
+        || role == "AXTextView"
+        || role == kAXComboBoxRole as String
 }
 
 func canUseKeyboardTextFallback(role: String?, roleDescription: String?, isValueSettable: Bool) -> Bool {
@@ -1121,6 +1133,18 @@ public final class ComputerUseService {
         let preferContainingWebRowAXClick = shouldPreferContainingWebRowAXClick(record, in: snapshot)
         debugClickDecision("record=\(clickDebugDescription(record)) preferContainingWebRowAXClick=\(preferContainingWebRowAXClick)")
 
+        if allowActivationFallback,
+           !record.isSyntheticText,
+           button == .left,
+           let element = record.element,
+           isEditableFocusRole(stringValue(of: element, attribute: kAXRoleAttribute)),
+           try activateClickTarget(element: element, availableActions: record.rawActions)
+        {
+            debugClickDecision("handled by editable focus before hit testing \(clickDebugDescription(record))")
+            Thread.sleep(forTimeInterval: 0.15)
+            return true
+        }
+
         if preferContainingWebRowAXClick,
            try performContainingWebRowClick(for: record, snapshot: snapshot, button: button, clickCount: clickCount)
         {
@@ -1222,6 +1246,11 @@ public final class ComputerUseService {
     }
 
     private func activateClickTarget(element: AXUIElement, availableActions: [String]) throws -> Bool {
+        let role = stringValue(of: element, attribute: kAXRoleAttribute)
+        if isEditableFocusRole(role) {
+            return try setBoolAttribute(named: kAXFocusedAttribute, on: element)
+        }
+
         var activated = false
 
         if try performAction(named: kAXRaiseAction as String, on: element, availableActions: availableActions) {
@@ -1265,6 +1294,21 @@ public final class ComputerUseService {
             settable: settable.boolValue,
             attribute: attribute
         )
+    }
+
+    private func isSettableForTypeText(element: AXUIElement, attribute: String) throws -> Bool {
+        var settable = DarwinBoolean(false)
+        let result = AXUIElementIsAttributeSettable(element, attribute as CFString, &settable)
+        switch result {
+        case .success:
+            return settable.boolValue
+        case .failure, .attributeUnsupported, .actionUnsupported, .cannotComplete, .noValue, .invalidUIElement, .illegalArgument:
+            return false
+        default:
+            throw ComputerUseError.message(
+                "AXUIElementIsAttributeSettable(\(attribute)) failed with \(result.rawValue)"
+            )
+        }
     }
 
     private func bestElement(containing point: CGPoint, in snapshot: AppSnapshot) -> ElementRecord? {
@@ -1524,7 +1568,7 @@ public final class ComputerUseService {
             return false
         }
 
-        guard try isSettableForSetValue(element: element, attribute: kAXValueAttribute) else {
+        guard try isSettableForTypeText(element: element, attribute: kAXValueAttribute) else {
             return false
         }
 
@@ -1552,7 +1596,7 @@ public final class ComputerUseService {
         return canUseKeyboardTextFallback(
             role: role,
             roleDescription: roleDescription,
-            isValueSettable: try isSettableForSetValue(element: element, attribute: kAXValueAttribute)
+            isValueSettable: try isSettableForTypeText(element: element, attribute: kAXValueAttribute)
         )
     }
 

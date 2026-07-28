@@ -749,6 +749,17 @@ final class OpenComputerUseKitTests: XCTestCase {
         XCTAssertTrue(adaptation.serverInstructions.contains("Claude Code adapter"))
         XCTAssertTrue(adaptation.serverInstructions.contains("DeepSeek profile"))
         XCTAssertTrue(adaptation.serverInstructions.contains("Claude Code+DeepSeek binding"))
+        XCTAssertTrue(adaptation.serverInstructions.contains("make no more OCU calls"))
+        XCTAssertTrue(adaptation.serverInstructions.contains("output it alone"))
+    }
+
+    func testPermissionErrorsCarryAStopAndRetryGate() {
+        let error = ComputerUseError.permissionDenied("Accessibility permission is required.")
+        let description = error.errorDescription ?? ""
+
+        XCTAssertTrue(description.contains("non-retryable"))
+        XCTAssertTrue(description.contains("Stop OCU calls"))
+        XCTAssertTrue(description.contains("only after the user confirms"))
     }
 
     func testAgentAdaptationInstructionsStayWithinClaudeBudget() {
@@ -1066,6 +1077,15 @@ final class OpenComputerUseKitTests: XCTestCase {
 
     func testActivationOnlyClickFallbackKeepsWindowRaisePath() {
         XCTAssertTrue(canUseActivationOnlyClickFallback(role: kAXWindowRole as String))
+    }
+
+    func testActivationOnlyClickFallbackKeepsEditableFocusPaths() {
+        XCTAssertTrue(canUseActivationOnlyClickFallback(role: kAXTextFieldRole as String))
+        XCTAssertTrue(canUseActivationOnlyClickFallback(role: "AXTextArea"))
+        XCTAssertTrue(canUseActivationOnlyClickFallback(role: "AXTextView"))
+        XCTAssertTrue(canUseActivationOnlyClickFallback(role: kAXComboBoxRole as String))
+        XCTAssertTrue(isEditableFocusRole(kAXTextFieldRole as String))
+        XCTAssertFalse(isEditableFocusRole(kAXWindowRole as String))
     }
 
     func testKeyboardTextFallbackRejectsPlainWebArea() {

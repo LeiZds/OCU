@@ -69,7 +69,7 @@ public struct OpenComputerUseAgentAdaptation: Equatable, Sendable {
         case .codex:
             return "Codex adapter: each new assistant turn needs fresh state. Transparent composition may combine one chosen action with verification, never two mutations."
         case .claudeCode:
-            return "Claude Code adapter: use exposed namespaced MCP tools directly and keep one session for indices and diffs. Permission approval or a tool return is not completion. If the backend is unavailable, report once; do not search unrelated tools."
+            return "Claude Code adapter: select an exact exposed MCP tool name; never reconstruct namespace punctuation. Keep one session for indices and diffs. Permission approval or a tool return is not completion. If the backend is unavailable, report once; do not search unrelated tools."
         case .workbuddy:
             return "WorkBuddy adapter: use direct MCP calls, preserve current state and app identity, and assume no other host's wrapper, Skill discovery, or permission behavior."
         }
@@ -82,7 +82,7 @@ public struct OpenComputerUseAgentAdaptation: Equatable, Sendable {
         case .gpt:
             return "GPT profile: use state → one action → evidence. Prefer the shortest semantic path; do not rediscover a known app."
         case .deepseek:
-            return "DeepSeek profile: visible plans contain only target, next action, and expected evidence. Do not narrate exploration. After two unchanged failures, change strategy once or stop unresolved."
+            return "DeepSeek profile: visible plan = target, action, evidence; no narration. Preserve exact Unicode code points and normalization. After two unchanged failures, change once or stop. Output an exact final token alone."
         }
     }
 
@@ -93,7 +93,7 @@ public struct OpenComputerUseAgentAdaptation: Equatable, Sendable {
         case .codexGPT:
             return "Codex+GPT binding: inspect non-empty action state directly; avoid a duplicate verification read."
         case .claudeCodeDeepSeek:
-            return "Claude Code+DeepSeek binding: for an exact app call get_app_state, not list_apps. Use the current row's integer index, never its stable ID. On backend absence or denied permission, report once and stop."
+            return "Claude Code+DeepSeek binding: exact app → get_app_state, not list_apps. Use the current integer index, never its stable ID. Backend or permission error is terminal until the environment changes: stop OCU and report once."
         }
     }
 

@@ -23,6 +23,8 @@ The Runtime selects a profile with `OPEN_COMPUTER_USE_MODEL_PROFILE`. Supported 
 - On an unchanged result, identify the failed assumption before retrying.
 - After two unchanged failures, change strategy once or stop unresolved. Do not repeat speculative clicks, state reads, permission checks, or app discovery.
 - Treat a successful MCP response as action acceptance only. Require task-specific UI evidence before completion.
+- Preserve exact Unicode code points and normalization when the requested value distinguishes visually equivalent sequences.
+- When a task or harness requires an exact final token, output only that token without a prefatory summary.
 
 ## Other Models
 

@@ -55,11 +55,12 @@ If nested Open Computer Use tools are unavailable, use the direct MCP calls and 
 
 Use `OPEN_COMPUTER_USE_HOST_ADAPTER=claude-code`. The Claude Code launcher uses `deepseek` and the `claude-code-deepseek` Binding by default for the current target stack.
 
-- Use the namespaced Open Computer Use MCP tools already exposed by the plugin. Do not start Shell or search unrelated tools when the backend is available.
+- Select the exact namespaced Open Computer Use MCP tool already exposed by the Harness. Never reconstruct or alter namespace punctuation, and do not start Shell or search unrelated tools when the backend is available.
 - Keep one MCP process for current `element_index` mappings and Diff state.
 - Treat MCP permission approval as permission only, not proof that the requested action ran or completed.
 - If the backend is absent or permission is denied, report that state once. Do not create a parallel installation or diagnostic chain unless the user requested troubleshooting.
 - Prefer direct calls because Claude Code does not promise Codex-style nested tool composition. Inspect the action-returned state before issuing a separate verification read.
+- The plugin's PreToolUse/PostToolUse/PostToolUseFailure guard denies a third identical no-progress call, stops after two consecutive OCU errors (including calls that fail before producing a normal result), and enforces a bounded per-turn emergency ceiling. UserPromptSubmit/Stop hooks correct an explicitly requested exact final token once; they do not own task planning.
 
 The Claude Code adapter must keep server instructions at or below 2048 characters because observed Harness versions may truncate longer MCP instructions. Detailed app and scenario experience belongs in Skill references.
 

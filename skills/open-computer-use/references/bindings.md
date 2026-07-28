@@ -19,8 +19,9 @@ Set `OPEN_COMPUTER_USE_BINDING` explicitly, or let the Runtime select a known co
 ## Claude Code + DeepSeek
 
 - When the user supplies an exact app name or verified identifier, call `get_app_state` on it instead of calling `list_apps`.
+- Select the exact tool name exposed by Claude Code; never retype or normalize its namespace separators.
 - Locate a target by stable ID, role, label, and value, but pass the current row's integer `element_index`; never pass the stable ID string as the argument.
-- If the OCU backend is unavailable or a permission is denied, report it once and stop. Do not branch into unrelated tool search or installation unless the user asked for troubleshooting.
+- Treat an OCU backend or permission error as terminal while the environment is unchanged: make no more OCU calls, report it once, and retry only after the user confirms a relevant change.
 - Keep recovery within the DeepSeek failure budget and require current UI evidence before declaring completion.
 
 ## Promotion Rule

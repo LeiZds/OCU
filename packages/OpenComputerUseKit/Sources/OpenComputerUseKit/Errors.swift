@@ -21,7 +21,7 @@ public enum ComputerUseError: Error, LocalizedError {
         case .appNotFound(let app):
             return "appNotFound(\"\(app)\")"
         case .permissionDenied(let message):
-            return message
+            return "\(message) This is non-retryable until the permission state changes. Stop OCU calls and report it once; retry only after the user confirms that permissions changed."
         case .stateUnavailable(let message):
             return message
         }

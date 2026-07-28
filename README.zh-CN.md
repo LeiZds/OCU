@@ -91,6 +91,14 @@ npx skills ls -g -a codex | rg 'open-computer-use'
 npx skills add iFurySt/open-codex-computer-use -g -a claude-code --skill open-computer-use -y
 ```
 
+直接从本 GitHub 仓库安装完整的 V1.1 Claude Code 插件
+（包含 Skill、MCP、Host Adapter Hook 和模型 Profile）：
+
+```bash
+claude plugin marketplace add https://github.com/LeiZds/OCU
+claude plugin install open-computer-use@ocu
+```
+
 更新已有的全局安装，包括上面安装到 Codex 的那份：
 
 ```bash
@@ -134,6 +142,11 @@ open-computer-use call --calls-file examples/textedit-overlay-seq.json --sleep 0
 
 # 检查权限；只有缺失时才会拉起引导，已全部授权则只打印状态并退出
 open-computer-use doctor
+
+# 在隔离配置中回归 Claude Code Harness + 目标模型 + V1.1 插件。
+# Claude Code 2.1.218 的 --bare 会让 print 模式不注入插件 MCP，因此这里不要加 --bare。
+make claude-harness SCENARIO=list-apps CLAUDE_COMMAND=/path/to/claude CLAUDE_MODEL=deepseek-v4-flash
+make claude-harness SCENARIO=fixture-basic CLAUDE_COMMAND=/path/to/claude CLAUDE_MODEL=deepseek-v4-flash
 
 # 查看帮助
 open-computer-use -h

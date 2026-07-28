@@ -22,6 +22,30 @@ const scenario = options.get("scenario") ?? "list-apps";
 const repetitions = positiveInteger(options.get("repetitions") ?? "1", "repetitions");
 const timeoutMs = positiveInteger(options.get("timeout-ms") ?? "180000", "timeout-ms");
 const candidateVersion = options.get("candidate") ?? "v1.1";
+const claudeCommand =
+  options.get("claude-command") ??
+  process.env.OPEN_COMPUTER_USE_CLAUDE_COMMAND ??
+  "claude";
+const claudeSettings = expandHomePath(
+  options.get("claude-settings") ??
+    process.env.OPEN_COMPUTER_USE_CLAUDE_SETTINGS ??
+    "~/.claude/settings.json",
+);
+const claudeModel =
+  options.get("claude-model") ??
+  process.env.OPEN_COMPUTER_USE_CLAUDE_MODEL ??
+  "deepseek-v4-flash";
+const claudeBudgetUsd =
+  options.get("claude-budget-usd") ??
+  process.env.OPEN_COMPUTER_USE_CLAUDE_BUDGET_USD ??
+  "3.00";
+const claudeWorkspace = path.resolve(
+  expandHomePath(
+    options.get("claude-workspace") ??
+      process.env.OPEN_COMPUTER_USE_CLAUDE_WORKSPACE ??
+      path.join(os.tmpdir(), "open-computer-use-claude-harness"),
+  ),
+);
 const invalidRetries = nonNegativeInteger(
   options.get("invalid-retries") ?? "1",
   "invalid-retries",
@@ -37,7 +61,7 @@ const supportedScenarios = new Set([
   "select-text",
   "long-page-scroll",
 ]);
-const supportedArms = new Set(["official", "ocu"]);
+const supportedArms = new Set(["official", "ocu", "claude"]);
 const supportedCandidates = new Set(["v1.0", "v1.1"]);
 
 if (!supportedScenarios.has(scenario)) {
@@ -49,10 +73,19 @@ if (
   requestedArms.length === 0 ||
   requestedArms.some((arm) => !supportedArms.has(arm))
 ) {
-  fail("--arms must contain official, ocu, or both.");
+  fail("--arms must contain official, ocu, claude, or a comma-separated combination.");
 }
 if (!supportedCandidates.has(candidateVersion)) {
   fail("--candidate must be v1.0 or v1.1.");
+}
+if (candidateVersion === "v1.0" && requestedArms.includes("claude")) {
+  fail("The Claude Code plugin arm requires --candidate=v1.1.");
+}
+if (requestedArms.includes("claude") && !existsSync(claudeSettings)) {
+  fail(`Claude settings file is missing: ${claudeSettings}`);
+}
+if (requestedArms.includes("claude")) {
+  mkdirSync(claudeWorkspace, { recursive: true });
 }
 
 const runId =
@@ -61,6 +94,10 @@ const outputDir = path.join(repoRoot, "artifacts/harness-ab/runs", runId);
 const candidateLauncher = candidateVersion === "v1.0"
   ? path.join(repoRoot, "scripts/run-ocu-v1-baseline.sh")
   : path.join(repoRoot, "scripts/launch-open-computer-use-codex-ab.sh");
+const claudeLauncher = path.join(
+  repoRoot,
+  "scripts/launch-open-computer-use-claude.sh",
+);
 const officialBaselinePath = path.join(
   repoRoot,
   "tests/harness/baselines/codex-official-1.0.1000502.json",
@@ -74,6 +111,9 @@ const officialWrapperPath = path.join(
 );
 const fixtureBundleIdentifier = "dev.opencomputeruse.fixture.ab";
 const fixtureAppName = "CodexABFixture";
+const claudePluginServerName = "ocu";
+const claudeToolPrefix =
+  `mcp__plugin_open-computer-use_${claudePluginServerName}__`;
 const fixtureAppPath = path.join(
   repoRoot,
   `.build/ab-fixtures/${fixtureAppName}.app`,
@@ -102,8 +142,10 @@ for (let repetition = 1; repetition <= repetitions; repetition += 1) {
       let result;
       try {
         const prompt = makePrompt({ arm, scenario, expectedValue });
-        const processResult = await runProcess(codexSpec({ arm, prompt }));
-        const parsed = parseCodexEvents(processResult.stdout, arm);
+        const processResult = await runProcess(agentSpec({ arm, prompt }));
+        const parsed = arm === "claude"
+          ? parseClaudeEvents(processResult.stdout)
+          : parseCodexEvents(processResult.stdout, arm);
         if (fixture) await delay(650);
         const fixtureState = fixture ? readFixtureState() : null;
         const validation = validateRun({
@@ -134,6 +176,7 @@ for (let repetition = 1; repetition <= repetitions; repetition += 1) {
           toolCalls: parsed.toolCalls,
           successfulToolCalls: parsed.successfulToolCalls,
           failedToolCalls: parsed.failedToolCalls,
+          forbiddenToolCalls: parsed.forbiddenToolCalls ?? [],
           actionCalls: parsed.toolCalls.filter(
             (tool) => tool !== "get_app_state" && tool !== "list_apps",
           ),
@@ -141,6 +184,8 @@ for (let repetition = 1; repetition <= repetitions; repetition += 1) {
             (tool) => tool === "get_app_state"
           ).length,
           usage: parsed.usage,
+          harnessInit: parsed.init ?? null,
+          thinkingTokenEvents: parsed.thinkingTokenEvents ?? null,
           finalText: parsed.finalText,
           fixtureEvidence: summarizeFixture(fixtureState),
         };
@@ -166,6 +211,7 @@ const report = {
   runId,
   createdAt: new Date().toISOString(),
   sourceCommit: commandOutput("git", ["rev-parse", "HEAD"]),
+  sourceDirty: Boolean(commandOutput("git", ["status", "--porcelain"])),
   candidate: candidateIdentity,
   scenario,
   repetitions,
@@ -173,13 +219,22 @@ const report = {
   invalidRetryPolicy: `retry infrastructure-invalid runs up to ${invalidRetries} time(s)`,
   environment: {
     codexVersion: commandOutput("codex", ["--version"]),
+    claudeVersion: requestedArms.includes("claude")
+      ? commandOutput(claudeCommand, ["--version"])
+      : null,
+    claudeModel: requestedArms.includes("claude") ? claudeModel : null,
     harnessCommit: commandOutput("git", ["rev-parse", "HEAD"]),
     platform: process.platform,
     architecture: process.arch,
     configIsolation: {
       official: `normal user config for node_repl; pinned Computer Use ${officialBaseline.version} wrapper path is supplied in the prompt`,
       ocu: `--ignore-user-config plus only the ${candidateVersion} OCU MCP override`,
+      claude:
+        "project-only setting sources plus the V1.1 plugin directory; --bare is intentionally excluded because Claude Code 2.1.218 omits plugin MCP tools from print-mode sessions under --bare",
     },
+    claudeWorkspace: requestedArms.includes("claude")
+      ? claudeWorkspace
+      : null,
     fixtureMode: scenario === "list-apps"
       ? null
       : "real Accessibility path; app name differs from OCU FixtureBridge.appName",
@@ -274,6 +329,48 @@ function prepareCandidate() {
     fail(`V1.1 candidate binary is missing: ${binary}`);
   }
 
+  const profiles = {};
+  if (requestedArms.some((arm) => arm === "official" || arm === "ocu")) {
+    profiles.codex = probeCandidateProfile(
+      candidateLauncher,
+      "Profile: host=codex;model=gpt;binding=codex-gpt.",
+    );
+  }
+  if (requestedArms.includes("claude")) {
+    profiles.claude = probeCandidateProfile(
+      claudeLauncher,
+      "Profile: host=claude-code;model=deepseek;binding=claude-code-deepseek.",
+    );
+  }
+  const identity = profiles.codex ?? profiles.claude;
+
+  return {
+    productVersion: "1.1.0-dev.1",
+    runtimeVersion: identity.serverInfo.version,
+    sourceCommit: commandOutput("git", ["rev-parse", "HEAD"]),
+    sourceDirty: Boolean(commandOutput("git", ["status", "--porcelain"])),
+    binarySha256: sha256File(binary),
+    skillSha256: sha256File(
+      path.join(repoRoot, "skills/open-computer-use/SKILL.md"),
+    ),
+    toolCount: identity.toolCount,
+    instructionsBytes: identity.instructionsBytes,
+    profiles: Object.fromEntries(
+      Object.entries(profiles).map(([host, profile]) => [
+        host,
+        {
+          instructionsBytes: profile.instructionsBytes,
+          launcher: path.relative(
+            repoRoot,
+            host === "claude" ? claudeLauncher : candidateLauncher,
+          ),
+        },
+      ]),
+    ),
+  };
+}
+
+function probeCandidateProfile(launcher, expectedProfile) {
   const probe = spawnSync(
     process.execPath,
     [
@@ -281,7 +378,7 @@ function prepareCandidate() {
       "--timeout-ms",
       "15000",
       "--",
-      candidateLauncher,
+      launcher,
     ],
     {
       cwd: repoRoot,
@@ -297,8 +394,6 @@ function prepareCandidate() {
     fail(`V1.1 candidate MCP preflight failed: ${probe.stderr || probe.stdout}`);
   }
   const identity = JSON.parse(probe.stdout);
-  const expectedProfile =
-    "Profile: host=codex;model=gpt;binding=codex-gpt.";
   if (
     identity.serverInfo?.version !== "1.1.0-dev.1" ||
     identity.toolCount !== 10 ||
@@ -308,27 +403,44 @@ function prepareCandidate() {
       `V1.1 candidate identity mismatch: ${JSON.stringify({
         serverInfo: identity.serverInfo,
         toolCount: identity.toolCount,
+        expectedProfile,
         expectedProfilePresent: identity.instructions.includes(expectedProfile),
       })}`,
     );
   }
-
-  return {
-    productVersion: "1.1.0-dev.1",
-    runtimeVersion: identity.serverInfo.version,
-    sourceCommit: commandOutput("git", ["rev-parse", "HEAD"]),
-    binarySha256: sha256File(binary),
-    skillSha256: sha256File(
-      path.join(repoRoot, "skills/open-computer-use/SKILL.md"),
-    ),
-    toolCount: identity.toolCount,
-    instructionsBytes: identity.instructionsBytes,
-    profile: expectedProfile,
-    launcher: path.relative(repoRoot, candidateLauncher),
-  };
+  return identity;
 }
 
-function codexSpec({ arm, prompt }) {
+function agentSpec({ arm, prompt }) {
+  if (arm === "claude") {
+    return {
+      command: claudeCommand,
+      cwd: claudeWorkspace,
+      args: [
+        "--setting-sources",
+        "project",
+        "--settings",
+        claudeSettings,
+        "--plugin-dir",
+        repoRoot,
+        "--model",
+        claudeModel,
+        "--permission-mode",
+        "dontAsk",
+        "--allowedTools",
+        claudeAllowedTools(),
+        "--max-budget-usd",
+        claudeBudgetUsd,
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--include-hook-events",
+        "--verbose",
+        "--no-session-persistence",
+        prompt,
+      ],
+    };
+  }
   const args = [
     "exec",
     "--ignore-rules",
@@ -370,48 +482,57 @@ function codexSpec({ arm, prompt }) {
   return { command: "codex", args };
 }
 
+function requiredToolsForScenario(scenarioId) {
+  if (scenarioId === "list-apps") return ["list_apps"];
+  if (scenarioId === "focus-unicode") {
+    return ["get_app_state", "set_value", "click", "type_text"];
+  }
+  if (scenarioId === "select-text") {
+    return ["get_app_state", "set_value", "select_text"];
+  }
+  if (scenarioId === "long-page-scroll") {
+    return ["get_app_state", "scroll"];
+  }
+  return ["get_app_state", "set_value", "click"];
+}
+
+function claudeAllowedTools() {
+  return requiredToolsForScenario(scenario)
+    .map(
+      (tool) =>
+        `${claudeToolPrefix}${tool}`,
+    )
+    .join(",");
+}
+
 function makePrompt({ arm, scenario: scenarioId, expectedValue }) {
   const backend = arm === "official"
     ? [
       "Use only the Codex official computer-use runtime through node_repl and sky. Do not use open-computer-use MCP or any other UI backend",
       `In node_repl initialize it exactly with: if (!globalThis.sky) { const { setupComputerUseRuntime } = await import(${JSON.stringify(officialWrapperPath)}); await setupComputerUseRuntime({ globals: globalThis }); }`,
     ].join(". ")
-    : "Use only open-computer-use MCP tools. Do not use node_repl, terminal, shell, browser, file, or any other tool";
+    : arm === "claude"
+      ? "Use only the Open Computer Use plugin MCP tools. Select only an exact tool name exposed by the Harness; never reconstruct or alter namespace punctuation. Do not use Bash, terminal, shell, browser, files, or any other tool. A final success token is valid only after the required OCU tool calls succeed and the post-action state proves completion"
+      : "Use only open-computer-use MCP tools. Do not use node_repl, terminal, shell, browser, file, or any other tool";
   const appReference = arm === "official" ? fixtureAppPath : fixtureBundleIdentifier;
-  const stateRead = arm === "ocu"
+  const stateRead = arm !== "official"
     ? `Call get_app_state for app ${appReference} with disable_screenshot=true`
     : `Call get_app_state for app ${appReference}`;
   if (scenarioId === "list-apps") {
-    const finalText = arm === "official"
-      ? "OFFICIAL_CU_AGENT_OK"
-      : "OCU_CANDIDATE_AGENT_OK";
+    const finalText = expectedFinalText(arm, scenarioId);
     return [
       `${backend}.`,
       "Call list_apps exactly once. Do not capture a screenshot or change anything.",
       `After the tool call, reply exactly ${finalText}.`,
     ].join(" ");
   }
-  const finalText = arm === "official"
-    ? scenarioId === "focus-unicode"
-      ? "OFFICIAL_CU_UNICODE_OK"
-      : scenarioId === "select-text"
-        ? "OFFICIAL_CU_SELECT_OK"
-      : scenarioId === "long-page-scroll"
-        ? "OFFICIAL_CU_SCROLL_OK"
-      : "OFFICIAL_CU_FIXTURE_OK"
-    : scenarioId === "focus-unicode"
-      ? "OCU_CANDIDATE_UNICODE_OK"
-      : scenarioId === "select-text"
-        ? "OCU_CANDIDATE_SELECT_OK"
-      : scenarioId === "long-page-scroll"
-        ? "OCU_CANDIDATE_SCROLL_OK"
-      : "OCU_CANDIDATE_FIXTURE_OK";
+  const finalText = expectedFinalText(arm, scenarioId);
   if (scenarioId === "focus-unicode") {
     const initialValue = `${expectedValue}-中文🙂é`;
     return [
       `${backend}. Operate the local app ${fixtureAppName}; its test reference is ${appReference}.`,
       `${stateRead}.`,
-      `Use set_value to set the text field exactly to ${JSON.stringify(initialValue)}.`,
+      `Use set_value to set the text field exactly to ${JSON.stringify(initialValue)}. The final é is decomposed U+0065 U+0301; do not replace it with precomposed é U+00E9.`,
       "Click that text field using the integer element_index from the latest state so it has focus.",
       `Use type_text to append exactly ${JSON.stringify("｜追加")}.`,
       `${stateRead} again. Only finish after the text field is exactly ${JSON.stringify(`${initialValue}｜追加`)} and Counter is still 0.`,
@@ -451,11 +572,24 @@ function makePrompt({ arm, scenario: scenarioId, expectedValue }) {
   ].join(" ");
 }
 
+function expectedFinalText(arm, scenarioId) {
+  const prefix = arm === "official"
+    ? "OFFICIAL_CU"
+    : arm === "claude"
+      ? "CLAUDE_OCU"
+      : "OCU_CANDIDATE";
+  if (scenarioId === "list-apps") return `${prefix}_AGENT_OK`;
+  if (scenarioId === "focus-unicode") return `${prefix}_UNICODE_OK`;
+  if (scenarioId === "select-text") return `${prefix}_SELECT_OK`;
+  if (scenarioId === "long-page-scroll") return `${prefix}_SCROLL_OK`;
+  return `${prefix}_FIXTURE_OK`;
+}
+
 function runProcess(spec) {
   return new Promise((resolve) => {
     const startedAt = Date.now();
     const child = spawn(spec.command, spec.args, {
-      cwd: repoRoot,
+      cwd: spec.cwd ?? repoRoot,
       env: {
         ...process.env,
         OPEN_COMPUTER_USE_VISUAL_CURSOR: "0",
@@ -703,6 +837,120 @@ function parseCodexEvents(stdout, arm) {
   };
 }
 
+function parseClaudeEvents(stdout) {
+  const toolUses = new Map();
+  const callRecords = [];
+  const toolCalls = [];
+  const successfulToolCalls = [];
+  const failedToolCalls = [];
+  const forbiddenToolCalls = [];
+  let init = null;
+  let usage = null;
+  let finalText = "";
+  let toolResultTextBytes = 0;
+  let toolResultImageBase64Bytes = 0;
+  let thinkingTokenEvents = 0;
+
+  for (const line of stdout.split(/\n+/).filter(Boolean)) {
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (event.type === "system" && event.subtype === "init") {
+      init = {
+        model: event.model ?? null,
+        permissionMode: event.permissionMode ?? null,
+        tools: event.tools ?? [],
+        mcpServers: event.mcp_servers ?? [],
+        plugins: event.plugins ?? [],
+        pluginErrors: event.plugin_errors ?? [],
+      };
+    }
+    if (event.type === "system" && event.subtype === "thinking_tokens") {
+      thinkingTokenEvents += 1;
+    }
+    if (event.type === "result") {
+      usage = event.usage ?? null;
+    }
+    if (event.type === "assistant") {
+      for (const block of event.message?.content ?? []) {
+        if (block?.type === "text" && typeof block.text === "string") {
+          finalText = block.text;
+        }
+        if (block?.type !== "tool_use" || typeof block.name !== "string") {
+          continue;
+        }
+        if (!block.name.startsWith(claudeToolPrefix)) {
+          forbiddenToolCalls.push(block.name);
+          continue;
+        }
+        const tool = block.name.slice(claudeToolPrefix.length);
+        toolCalls.push(tool);
+        toolUses.set(block.id, {
+          tool,
+          input: block.input ?? {},
+        });
+      }
+    }
+    if (event.type !== "user") continue;
+    for (const block of event.message?.content ?? []) {
+      if (block?.type !== "tool_result") continue;
+      const call = toolUses.get(block.tool_use_id);
+      if (!call) continue;
+      const completed = block.is_error !== true;
+      const resultText = claudeToolResultText(block.content);
+      toolResultTextBytes += Buffer.byteLength(resultText);
+      toolResultImageBase64Bytes += claudeToolResultImageBytes(block.content);
+      (completed ? successfulToolCalls : failedToolCalls).push(call.tool);
+      callRecords.push({
+        tools: [call.tool],
+        completed,
+        resultText,
+      });
+    }
+  }
+
+  return {
+    toolCalls,
+    successfulToolCalls,
+    failedToolCalls,
+    forbiddenToolCalls,
+    callRecords,
+    usage,
+    finalText,
+    toolResultTextBytes,
+    toolResultImageBase64Bytes,
+    init,
+    thinkingTokenEvents,
+  };
+}
+
+function claudeToolResultText(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((item) => item?.type === "text" && typeof item.text === "string")
+    .map((item) => item.text)
+    .join("\n");
+}
+
+function claudeToolResultImageBytes(content) {
+  if (!Array.isArray(content)) return 0;
+  return content
+    .filter(
+      (item) =>
+        item?.type === "image" &&
+        typeof (item.data ?? item.source?.data) === "string",
+    )
+    .reduce(
+      (sum, item) =>
+        sum + Buffer.byteLength(item.data ?? item.source?.data),
+      0,
+    );
+}
+
 function validateRun({
   arm,
   scenario: scenarioId,
@@ -726,7 +974,9 @@ function validateRun({
       success: false,
       taskCompleted: false,
       methodConformance: false,
-      failures: ["Codex test infrastructure was unavailable because its usage limit was reached"],
+      failures: [
+        `${arm === "claude" ? "Claude Code" : "Codex"} test infrastructure was unavailable because its usage limit was reached`,
+      ],
     };
   }
   const backendUnavailable = parsed.toolCalls.length === 0 && (
@@ -747,17 +997,55 @@ function validateRun({
       failures: ["requested Computer Use backend was not injected into the Codex task"],
     };
   }
-  if (processResult.code !== 0) taskFailures.push(`codex exited ${processResult.code}`);
-  if (processResult.timedOut) taskFailures.push("codex timed out");
-  const expectedFinal = scenarioId === "list-apps"
-    ? arm === "official" ? "OFFICIAL_CU_AGENT_OK" : "OCU_CANDIDATE_AGENT_OK"
-    : scenarioId === "focus-unicode"
-      ? arm === "official" ? "OFFICIAL_CU_UNICODE_OK" : "OCU_CANDIDATE_UNICODE_OK"
-      : scenarioId === "select-text"
-        ? arm === "official" ? "OFFICIAL_CU_SELECT_OK" : "OCU_CANDIDATE_SELECT_OK"
-      : scenarioId === "long-page-scroll"
-        ? arm === "official" ? "OFFICIAL_CU_SCROLL_OK" : "OCU_CANDIDATE_SCROLL_OK"
-      : arm === "official" ? "OFFICIAL_CU_FIXTURE_OK" : "OCU_CANDIDATE_FIXTURE_OK";
+  const agentLabel = arm === "claude" ? "claude" : "codex";
+  if (processResult.code !== 0) {
+    taskFailures.push(`${agentLabel} exited ${processResult.code}`);
+  }
+  if (processResult.timedOut) taskFailures.push(`${agentLabel} timed out`);
+  if (arm === "claude") {
+    if (parsed.init?.model !== claudeModel) {
+      methodFailures.push(
+        `unexpected Claude model: expected ${claudeModel}, got ${parsed.init?.model ?? "none"}`,
+      );
+    }
+    if ((parsed.init?.pluginErrors ?? []).length > 0) {
+      methodFailures.push(
+        `Claude Code reported plugin load errors: ${parsed.init.pluginErrors
+          .map((error) => `${error?.type ?? "unknown"}:${error?.message ?? "unknown"}`)
+          .join(" | ")}`,
+      );
+    }
+    const expectedMcpName =
+      `plugin:open-computer-use:${claudePluginServerName}`;
+    const connected = parsed.init?.mcpServers?.some(
+      (server) =>
+        server?.name === expectedMcpName && server?.status === "connected",
+    );
+    if (!connected) {
+      methodFailures.push("Claude Code did not connect the V1.1 plugin MCP");
+    }
+    const unexpectedMcpServers = (parsed.init?.mcpServers ?? []).filter(
+      (server) => server?.name !== expectedMcpName,
+    );
+    if (unexpectedMcpServers.length > 0) {
+      methodFailures.push(
+        `Claude Code loaded unexpected MCP servers: ${unexpectedMcpServers
+          .map((server) => `${server?.name ?? "unknown"}:${server?.status ?? "unknown"}`)
+          .join(",")}`,
+      );
+    }
+    if (parsed.forbiddenToolCalls.length > 0) {
+      methodFailures.push(
+        `Claude Code used forbidden tools: ${parsed.forbiddenToolCalls.join(",")}`,
+      );
+    }
+    if (parsed.failedToolCalls.length > 0) {
+      methodFailures.push(
+        `Claude Code had failed OCU calls: ${parsed.failedToolCalls.join(",")}`,
+      );
+    }
+  }
+  const expectedFinal = expectedFinalText(arm, scenarioId);
   if (parsed.finalText.trim() !== expectedFinal) {
     methodFailures.push(`unexpected final response: ${parsed.finalText.trim()}`);
   }
@@ -765,13 +1053,7 @@ function validateRun({
     const count = parsed.successfulToolCalls.filter((tool) => tool === "list_apps").length;
     if (count !== 1) taskFailures.push(`expected one list_apps call, saw ${count}`);
   } else {
-    const requiredTools = scenarioId === "focus-unicode"
-      ? ["get_app_state", "set_value", "click", "type_text"]
-      : scenarioId === "select-text"
-        ? ["get_app_state", "set_value", "select_text"]
-      : scenarioId === "long-page-scroll"
-        ? ["get_app_state", "scroll"]
-        : ["get_app_state", "set_value", "click"];
+    const requiredTools = requiredToolsForScenario(scenarioId);
     for (const required of requiredTools) {
       if (!parsed.toolCalls.includes(required)) {
         methodFailures.push(`missing ${required} call`);
@@ -810,12 +1092,24 @@ function validateRun({
       const typeTextRecordIndex = parsed.callRecords.findIndex((record) =>
         record.completed && record.tools.includes("type_text")
       );
+      const typeTextRecord = typeTextRecordIndex === -1
+        ? null
+        : parsed.callRecords[typeTextRecordIndex];
       const firstVerification = typeTextRecordIndex === -1
         ? null
         : parsed.callRecords
           .slice(typeTextRecordIndex)
           .find((record) => record.completed && record.tools.includes("get_app_state"));
-      if (!firstVerification?.resultText.includes(expectedInput)) {
+      const actionProvedValue = typeTextRecord?.resultText.includes(expectedInput);
+      const verificationProvedValue =
+        firstVerification?.resultText.includes(expectedInput) ||
+        (
+          actionProvedValue &&
+          /No accessibility changes since the previous presented state\./.test(
+            firstVerification?.resultText ?? "",
+          )
+        );
+      if (!verificationProvedValue) {
         methodFailures.push(
           "type_text did not produce the expected text at the first post-action verification",
         );

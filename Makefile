@@ -4,8 +4,11 @@ AGENTS ?= claude,codex
 SCENARIO ?= list-apps
 RUNS ?= 1
 CANDIDATE ?= v1.1
+CLAUDE_COMMAND ?= claude
+CLAUDE_SETTINGS ?= ~/.claude/settings.json
+CLAUDE_MODEL ?= deepseek-v4-flash
 
-.PHONY: init build app test smoke stress agent-smoke baseline-v1 surface-parity adaptation-check app-agent-check codex-ab check-docs check-repo ci release-package npm-build npm-publish new-history new-plan
+.PHONY: init build app test smoke stress agent-smoke baseline-v1 surface-parity adaptation-check app-agent-check codex-ab claude-harness check-docs check-repo ci release-package npm-build npm-publish new-history new-plan
 
 init:
 	@if [ -z "$(PROJECT)" ]; then echo "用法: make init PROJECT=项目名"; exit 1; fi
@@ -38,6 +41,7 @@ surface-parity:
 adaptation-check:
 	swift build -c release --product OpenComputerUse
 	node ./scripts/check-agent-adaptation.mjs
+	node ./scripts/test-claude-hook-guard.mjs
 
 app-agent-check:
 	./scripts/build-open-computer-use-app.sh debug
@@ -45,6 +49,9 @@ app-agent-check:
 
 codex-ab:
 	node ./scripts/run-codex-computer-use-ab.mjs --candidate=$(CANDIDATE) --scenario=$(SCENARIO) --repetitions=$(RUNS)
+
+claude-harness:
+	node ./scripts/run-codex-computer-use-ab.mjs --arms=claude --candidate=$(CANDIDATE) --scenario=$(SCENARIO) --repetitions=$(RUNS) --claude-command="$(CLAUDE_COMMAND)" --claude-settings="$(CLAUDE_SETTINGS)" --claude-model="$(CLAUDE_MODEL)"
 
 check-docs:
 	./scripts/check-docs.sh

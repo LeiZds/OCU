@@ -92,6 +92,14 @@ Install for Claude Code:
 npx skills add iFurySt/open-codex-computer-use -g -a claude-code --skill open-computer-use -y
 ```
 
+Install the complete V1.1 Claude Code plugin directly from this GitHub repository
+(Skill, MCP server, Host Adapter hooks, and model profile):
+
+```bash
+claude plugin marketplace add https://github.com/LeiZds/OCU
+claude plugin install open-computer-use@ocu
+```
+
 Update an existing global install, including the Codex install created above:
 
 ```bash
@@ -150,6 +158,11 @@ OPEN_COMPUTER_USE_HERMES_PROVIDER=anthropic OPEN_COMPUTER_USE_HERMES_MODEL=claud
 node ./scripts/run-agent-smoke-tests.mjs --agents=hermes --hermes-provider=anthropic --hermes-model=claude-opus-4-20250514
 node ./scripts/run-agent-smoke-tests.mjs --scenario=fixture --agents=hermes --hermes-provider=anthropic --hermes-model=claude-opus-4-20250514
 node ./scripts/run-agent-smoke-tests.mjs --scenario=fixture-full --agents=hermes --hermes-provider=anthropic --hermes-model=claude-opus-4-20250514 --hermes-max-turns=12
+
+# Run the isolated Claude Code Harness + model + V1.1 plugin regression.
+# Do not add --bare: Claude Code 2.1.218 omits plugin MCP tools in print mode under --bare.
+make claude-harness SCENARIO=list-apps CLAUDE_COMMAND=/path/to/claude CLAUDE_MODEL=deepseek-v4-flash
+make claude-harness SCENARIO=fixture-basic CLAUDE_COMMAND=/path/to/claude CLAUDE_MODEL=deepseek-v4-flash
 
 # Show help
 open-computer-use -h
