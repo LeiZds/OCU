@@ -54,4 +54,7 @@ Claude Code Harness、DeepSeek 和 OCU 必须分别可观测。最终回复不�
 - 真实循环守卫验证：前三次相同状态读取允许，第四次在执行前被 Harness 拒绝。
 - Hook 单元回归确认连续两个 `PostToolUseFailure` 会让下一次 OCU 调用在执行前被拒绝。
 - 权限缺失实测暴露 Stop Hook 曾在工具失败后强制输出成功标记；定向回归现确认失败回复保持失败，不产生目标标记。
+- 提交 `c703ae5` 的 Codex 最终候选配对覆盖五个 P0 场景；OCU 五组均完整通过。应用发现、基础操作、Unicode、精确选择和滚动分别为 13.7s/1、34.1s/4、44.8s/7、39.1s/5、17.9s/3 次调用。
+- 同一配对中官方 Unicode 虽最终状态正确，但经历 44 次调用、127.8 秒且首次 `type_text` 验证失败；OCU 保持分解 Unicode 并按指定方法完成。其余四组双方均完整通过。
+- 五组 OCU 峰值 RSS 为 153–180MB、进程峰值均为 1，且工具结果图片传输为 0；阶段评分从 V1.0 的 61 分提高到 V1.1 的 86 分。
 - `swift test --filter OpenComputerUseKitTests.testActivationOnlyClickFallbackKeepsEditableFocusPaths` 仍被仓库既有 Swift/XCTest 工具链问题阻断：`StandaloneCursorSupportTests` 无法加载 `XCTest`。
