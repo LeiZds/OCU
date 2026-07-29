@@ -68,6 +68,29 @@ function handlePreToolUse() {
   }
 
   const matching = completed.filter((call) => call.signature === signature);
+  const latestCompleted = completed.at(-1);
+  const appKey = tool === "get_app_state"
+    ? normalizedAppKey(input.tool_input?.app)
+    : null;
+  const latestSameAppRead = appKey
+    ? [...completed]
+      .reverse()
+      .find(
+        (call) =>
+          call.tool === "get_app_state" &&
+          call.appKey === appKey,
+      )
+    : null;
+  if (
+    tool === "get_app_state" &&
+    latestSameAppRead?.noAccessibilityChanges === true &&
+    latestCompleted?.sequence === latestSameAppRead.sequence
+  ) {
+    deny(
+      "OCU loop guard: the latest state read for this app already reported no accessibility changes and no action followed it. The stable completion evidence is already available; do not treat this guard as an OCU failure or change optional read arguments. Finish from the existing evidence.",
+    );
+  }
+
   const lastTwo = matching.slice(-2);
   if (
     lastTwo.length === 2 &&
@@ -92,6 +115,7 @@ function handlePreToolUse() {
     sequence: state.nextSequence,
     tool,
     signature,
+    appKey,
     resultHash: null,
     failed: false,
   });
@@ -121,6 +145,8 @@ function handlePostToolUse(forceFailed = false) {
     null;
   pending.resultHash = resultHash(toolResult);
   pending.failed = forceFailed || resultFailed(toolResult);
+  pending.noAccessibilityChanges =
+    !pending.failed && resultHasNoAccessibilityChanges(toolResult);
   saveState(state);
 }
 
@@ -258,6 +284,12 @@ function resultFailed(toolResult) {
   );
 }
 
+function resultHasNoAccessibilityChanges(toolResult) {
+  return stableStringify(toolResult ?? null).includes(
+    "No accessibility changes since the previous presented state.",
+  );
+}
+
 function hasErrorFlag(value) {
   if (!value || typeof value !== "object") {
     return false;
@@ -299,6 +331,12 @@ function safeSessionID(value) {
 function positiveInteger(value, fallback) {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function normalizedAppKey(value) {
+  return String(value ?? "")
+    .trim()
+    .toLocaleLowerCase("en-US");
 }
 
 function requestedExactFinalToken(prompt) {

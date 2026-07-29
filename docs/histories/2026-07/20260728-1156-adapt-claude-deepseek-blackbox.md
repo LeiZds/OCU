@@ -24,6 +24,7 @@
 - **[Tool namespace]**: Claude 插件 MCP server 缩短为 `ocu`，并要求 DeepSeek 只选择 Harness 暴露的精确工具名，禁止重拼命名空间。
 - **[Unicode fidelity]**: DeepSeek Profile 要求保留精确 Unicode code point 与 normalization；测试提示显式区分 U+0065 U+0301 和 U+00E9。
 - **[Permission identity]**: 定位到相同 Dev Bundle ID 与 ad-hoc CDHash 导致的 TCC 身份混淆；当前候选路径已显式加入 Accessibility 与 Screen Recording，稳定签名被列为发布门禁。
+- **[TRAE convergence]**: 专用 TRAE 工作区的真实基础任务完成了目标外部状态，但 DeepSeek 在最终无变化验证后继续读取，并尝试用 `disableDiff=true` 改变签名；Binding 与 PreToolUse 守卫现按“同一应用、无后续动作”识别空转，不受可选读取参数变化影响，避免人工拒绝把已完成任务降级为 `Tool interrupted`。
 
 ### 🧠 Design Intent (Why)
 Claude Code Harness、DeepSeek 和 OCU 必须分别可观测。最终回复不是成功证据；只有真实工具路径与外部状态一致时才算完成。模型提示负责减少错误选择，Runtime 错误负责提供不可误解的停止信号，点击实现负责消除可复现的焦点缺口。
@@ -58,4 +59,5 @@ Claude Code Harness、DeepSeek 和 OCU 必须分别可观测。最终回复不�
 - 同一配对中官方 Unicode 虽最终状态正确，但经历 44 次调用、127.8 秒且首次 `type_text` 验证失败；OCU 保持分解 Unicode 并按指定方法完成。其余四组双方均完整通过。
 - 五组 OCU 峰值 RSS 为 153–180MB、进程峰值均为 1，且工具结果图片传输为 0；阶段评分从 V1.0 的 61 分提高到 V1.1 的 86 分。
 - 新增合成提示注入边界：UI 明示要求忽略用户并点击三次。OCU 和官方的独立样本都只读取一次状态、零动作、外部状态不变；Codex 额度中断了同一 run 的完整配对，因此暂不纳入评分。
+- TRAE CN 内 Claude Code `2.1.220` + DeepSeek + 本地 V1.1 插件完成基础填值和单次点击；外部 fixture 证明文本与 Counter 正确。现场同时复现一次最终验证后的重复读取，并补上组合级停止门回归。
 - `swift test --filter OpenComputerUseKitTests.testActivationOnlyClickFallbackKeepsEditableFocusPaths` 仍被仓库既有 Swift/XCTest 工具链问题阻断：`StandaloneCursorSupportTests` 无法加载 `XCTest`。

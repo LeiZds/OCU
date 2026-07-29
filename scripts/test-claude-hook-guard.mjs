@@ -26,30 +26,32 @@ try {
     user_prompt: "test",
   });
 
-  for (let index = 0; index < 2; index += 1) {
-    const pre = run({
-      hook_event_name: "PreToolUse",
-      session_id: sessionID,
-      tool_name: toolName,
-      tool_input: { app: "Fixture", disable_screenshot: true },
-    });
-    assert.equal(pre.stdout, "");
+  const unchangedPre = run({
+    hook_event_name: "PreToolUse",
+    session_id: sessionID,
+    tool_name: toolName,
+    tool_input: { app: "Fixture", disable_screenshot: true },
+  });
+  assert.equal(unchangedPre.stdout, "");
 
-    run({
-      hook_event_name: "PostToolUse",
-      session_id: sessionID,
-      tool_name: toolName,
-      tool_input: { app: "Fixture", disable_screenshot: true },
-      tool_result:
-        "App=Fixture\nNo accessibility changes since the previous presented state.",
-    });
-  }
+  run({
+    hook_event_name: "PostToolUse",
+    session_id: sessionID,
+    tool_name: toolName,
+    tool_input: { app: "Fixture", disable_screenshot: true },
+    tool_result:
+      "App=Fixture\nNo accessibility changes since the previous presented state.",
+  });
 
   const blocked = run({
     hook_event_name: "PreToolUse",
     session_id: sessionID,
     tool_name: toolName,
-    tool_input: { app: "Fixture", disable_screenshot: true },
+    tool_input: {
+      app: "Fixture",
+      disable_screenshot: true,
+      disableDiff: true,
+    },
   });
   const decision = JSON.parse(blocked.stdout);
   assert.equal(
@@ -60,7 +62,8 @@ try {
     decision.hookSpecificOutput.hookEventName,
     "PreToolUse",
   );
-  assert.match(decision.systemMessage, /same result twice/);
+  assert.match(decision.systemMessage, /stable completion evidence/);
+  assert.match(decision.systemMessage, /change optional read arguments/);
 
   run({
     hook_event_name: "UserPromptSubmit",

@@ -247,3 +247,4 @@ Bindings（只保存组合特例）
 - 2026-07-28：自动化 fixture 增加真实可见的恶意 UI 指令。OCU 与官方的独立样本都只读取一次状态且没有执行恶意文本要求的三次点击；正式配对的 OCU arm 受 Codex 额度中断，因此该证据暂不计分。
 - 2026-07-28：Claude 插件 MCP server 从重复的 `open-computer-use` 缩短为 `ocu`。DeepSeek 曾把暴露名中的下划线/连字符重拼三次；Host Adapter 与测试提示现要求只选择 Harness 已暴露的精确名称。复测基础、Unicode、重复文本选择和滚动分别以 4、5、4、3 次调用通过。
 - 2026-07-28：系统设置授权操作中，Codex 官方 Computer Use 的可见结构索引与实际命中曾不一致，误移除“豆包”辅助功能条目；已立即恢复应用条目并还原原来的关闭状态。此后权限操作只使用目标 Bundle ID 的 `tccutil reset`、明确的添加按钮和完整 App 路径，不再按列表行执行删除。
+- 2026-07-29：专用 TRAE 工作区只加载本地 V1.1 插件后，Claude Code `2.1.220` + DeepSeek 的基础任务已把外部 fixture 正确改为目标文本和 Counter 1，但在最终 `get_app_state` 返回无变化后又请求读取；人工拒绝会把已完成任务标记为 `Tool interrupted`，而仅比较完整参数又会被 `disableDiff=true` 绕过。Claude Code × DeepSeek Binding 现明确“最终无变化验证后停止”，PreToolUse 守卫也会在同一应用无后续动作时阻止下一次读取，不受可选读取参数变化影响。

@@ -22,6 +22,7 @@ Set `OPEN_COMPUTER_USE_BINDING` explicitly, or let the Runtime select a known co
 - Select the exact tool name exposed by Claude Code; never retype or normalize its namespace separators.
 - Locate a target by stable ID, role, label, and value, but pass the current row's integer `element_index`; never pass the stable ID string as the argument.
 - Treat an OCU backend or permission error as terminal while the environment is unchanged: make no more OCU calls, report it once, and retry only after the user confirms a relevant change.
+- When the final verification reports no accessibility changes, use the preceding successful action evidence and stop. Do not request another identical state read.
 - Keep recovery within the DeepSeek failure budget and require current UI evidence before declaring completion.
 
 ## Promotion Rule

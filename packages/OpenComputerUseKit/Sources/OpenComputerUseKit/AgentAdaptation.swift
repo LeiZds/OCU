@@ -93,7 +93,7 @@ public struct OpenComputerUseAgentAdaptation: Equatable, Sendable {
         case .codexGPT:
             return "Codex+GPT binding: inspect non-empty action state directly; avoid a duplicate verification read."
         case .claudeCodeDeepSeek:
-            return "Claude Code+DeepSeek binding: exact app → get_app_state, not list_apps. Use the current integer index, never its stable ID. Backend or permission error is terminal until the environment changes: stop OCU and report once."
+            return "Claude Code+DeepSeek: exact app → get_app_state, not list_apps. Pass current integer index, never stable ID. Permission/backend error is terminal until the environment changes. A no-change final read means stop; never read again."
         }
     }
 
