@@ -1,6 +1,6 @@
 {
   "name": "open-computer-use",
-  "version": "1.1.0",
+  "version": "1.2.0-dev.1",
   "description": "Open-source cross-platform Computer Use with host adapters, model profiles, and evidence-based recovery.",
   "author": {
     "name": "Leo",
@@ -25,7 +25,7 @@
   "interface": {
     "displayName": "Open Computer Use (OCU)",
     "shortDescription": "Control desktop apps with adaptive local Computer Use",
-    "longDescription": "Open Computer Use V1.1 combines a shared accessibility Runtime with Codex, Claude Code, and WorkBuddy host adapters, GPT and DeepSeek model profiles, sparse bindings, and ten desktop-control tools.",
+    "longDescription": "Open Computer Use V1.2 adds deterministic stale-state, window-identity, recovery, safety, and geometry validation while preserving the shared Runtime and ten desktop-control tools.",
     "developerName": "Leo",
     "category": "Productivity",
     "capabilities": [

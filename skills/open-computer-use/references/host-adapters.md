@@ -56,11 +56,12 @@ If nested Open Computer Use tools are unavailable, use the direct MCP calls and 
 Use `OPEN_COMPUTER_USE_HOST_ADAPTER=claude-code`. The Claude Code launcher uses `deepseek` and the `claude-code-deepseek` Binding by default for the current target stack.
 
 - Select the exact namespaced Open Computer Use MCP tool already exposed by the Harness. Never reconstruct or alter namespace punctuation, and do not start Shell or search unrelated tools when the backend is available.
+- Pass the exact `app` argument from the latest verified state. Never rename it to `app_id`, infer a similar process, or act on the foreground window merely because it is visible.
 - Keep one MCP process for current `element_index` mappings and Diff state.
 - Treat MCP permission approval as permission only, not proof that the requested action ran or completed.
 - If the backend is absent or permission is denied, report that state once. Do not create a parallel installation or diagnostic chain unless the user requested troubleshooting.
 - Prefer direct calls because Claude Code does not promise Codex-style nested tool composition. Inspect the action-returned state before issuing a separate verification read.
-- The plugin's PreToolUse/PostToolUse/PostToolUseFailure guard denies a third identical no-progress call, stops after two consecutive OCU errors (including calls that fail before producing a normal result), and enforces a bounded per-turn emergency ceiling. UserPromptSubmit/Stop hooks may remove extra narration from an explicitly requested final token only after successful OCU evidence and only when the assistant already included that token; they never turn an error report into success and do not own task planning.
+- The plugin's PreToolUse/PostToolUse/PostToolUseFailure guard denies a third identical no-progress call, stops after two consecutive ordinary OCU errors, and enforces a 12-call per-turn emergency ceiling. A host denial, permission refusal, missing backend, or interrupted call is terminal on the first occurrence while the environment is unchanged: stop immediately instead of changing tools or arguments. UserPromptSubmit/Stop hooks may remove extra narration from an explicitly requested final token only after successful OCU evidence and only when the assistant already included that token; they never turn an error report into success and do not own task planning.
 
 The Claude Code adapter must keep server instructions at or below 2048 characters because observed Harness versions may truncate longer MCP instructions. Detailed app and scenario experience belongs in Skill references.
 

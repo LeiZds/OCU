@@ -427,6 +427,8 @@ func shouldPreferContainingWebRowAXClickCandidate(
 
 public final class ComputerUseService {
     private var snapshotsByApp: [String: AppSnapshot] = [:]
+    private var snapshotVersionsByApp: [String: UInt64] = [:]
+    private var snapshotVersionCounter: UInt64 = 0
     private var presentedStatesByApp: [String: String] = [:]
     private let returnActionState: Bool
 
@@ -484,7 +486,17 @@ public final class ComputerUseService {
             environment: ProcessInfo.processInfo.environment
         )
 
-        let snapshot = try currentSnapshot(for: query)
+        let cachedSnapshot = try currentSnapshot(for: query)
+        let snapshot: AppSnapshot
+        let validatedElement: ElementRecord?
+        if let elementIndex {
+            let validated = try validatedElementSnapshot(for: query, index: elementIndex)
+            snapshot = validated.snapshot
+            validatedElement = validated.record
+        } else {
+            snapshot = try validatedCoordinateSnapshot(for: query, cachedSnapshot: cachedSnapshot)
+            validatedElement = nil
+        }
         let button = MouseButtonKind(rawValue: mouseButton.lowercased()) ?? .left
         if snapshot.mode == .fixture {
             guard clickMethod == .auto else {
@@ -495,7 +507,7 @@ public final class ComputerUseService {
 
             let cursorTarget: VisualCursorTarget?
             if let elementIndex {
-                let record = try lookupElement(snapshot: snapshot, index: elementIndex)
+                let record = try requireValidatedElement(validatedElement, index: elementIndex)
                 guard let identifier = record.identifier else {
                     throw ComputerUseError.invalidArguments("fixture click requires an identifier-backed element")
                 }
@@ -520,7 +532,7 @@ public final class ComputerUseService {
         }
 
         if let elementIndex {
-            let record = try lookupElement(snapshot: snapshot, index: elementIndex)
+            let record = try requireValidatedElement(validatedElement, index: elementIndex)
             guard let targetPoint = try globalClickPoint(for: record, snapshot: snapshot) else {
                 throw ComputerUseError.stateUnavailable("element \(elementIndex) has no clickable frame")
             }
@@ -646,8 +658,9 @@ public final class ComputerUseService {
     }
 
     public func performSecondaryAction(app query: String, elementIndex: String, action: String) throws -> ToolCallResult {
-        let snapshot = try currentSnapshot(for: query)
-        let record = try lookupElement(snapshot: snapshot, index: elementIndex)
+        let validated = try validatedElementSnapshot(for: query, index: elementIndex)
+        let snapshot = validated.snapshot
+        let record = validated.record
 
         if snapshot.mode == .fixture {
             guard action.caseInsensitiveCompare("Raise") == .orderedSame else {
@@ -683,8 +696,9 @@ public final class ComputerUseService {
             throw ComputerUseError.message("pages must be > 0")
         }
 
-        let snapshot = try currentSnapshot(for: query)
-        let record = try lookupElement(snapshot: snapshot, index: elementIndex)
+        let validated = try validatedElementSnapshot(for: query, index: elementIndex)
+        let snapshot = validated.snapshot
+        let record = validated.record
 
         if snapshot.mode == .fixture {
             guard let identifier = record.identifier else {
@@ -764,7 +778,8 @@ public final class ComputerUseService {
     }
 
     public func drag(app query: String, fromX: Double, fromY: Double, toX: Double, toY: Double) throws -> ToolCallResult {
-        let snapshot = try currentSnapshot(for: query)
+        let cachedSnapshot = try currentSnapshot(for: query)
+        let snapshot = try validatedCoordinateSnapshot(for: query, cachedSnapshot: cachedSnapshot)
         if snapshot.mode == .fixture {
             try FixtureBridge.postAndWaitForStateChange(
                 FixtureCommand(kind: "drag", identifier: "fixture-drag-pad", x: fromX, y: fromY, toX: toX, toY: toY)
@@ -791,8 +806,9 @@ public final class ComputerUseService {
         suffix: String?,
         selectionType: String
     ) throws -> ToolCallResult {
-        let snapshot = try currentSnapshot(for: query)
-        let record = try lookupElement(snapshot: snapshot, index: elementIndex)
+        let validated = try validatedElementSnapshot(for: query, index: elementIndex)
+        let snapshot = validated.snapshot
+        let record = validated.record
 
         if snapshot.mode == .fixture {
             guard let identifier = record.identifier else {
@@ -868,7 +884,7 @@ public final class ComputerUseService {
     }
 
     public func typeText(app query: String, text: String) throws -> ToolCallResult {
-        let snapshot = try currentSnapshot(for: query)
+        let snapshot = try validatedFocusedSnapshot(for: query)
         if snapshot.mode == .fixture {
             try FixtureBridge.postAndWaitForStateChange(
                 FixtureCommand(kind: "type_text", identifier: "fixture-input", value: text)
@@ -890,7 +906,7 @@ public final class ComputerUseService {
     }
 
     public func pressKey(app query: String, key: String) throws -> ToolCallResult {
-        let snapshot = try currentSnapshot(for: query)
+        let snapshot = try validatedFocusedSnapshot(for: query)
         if snapshot.mode == .fixture {
             try FixtureBridge.postAndWaitForStateChange(
                 FixtureCommand(kind: "press_key", identifier: "fixture-key-capture", value: key)
@@ -903,8 +919,9 @@ public final class ComputerUseService {
     }
 
     public func setValue(app query: String, elementIndex: String, value: String) throws -> ToolCallResult {
-        let snapshot = try currentSnapshot(for: query)
-        let record = try lookupElement(snapshot: snapshot, index: elementIndex)
+        let validated = try validatedElementSnapshot(for: query, index: elementIndex)
+        let snapshot = validated.snapshot
+        let record = validated.record
 
         if snapshot.mode == .fixture {
             guard let identifier = record.identifier else {
@@ -955,6 +972,101 @@ public final class ComputerUseService {
         return try refreshSnapshot(for: query)
     }
 
+    private func validatedElementSnapshot(
+        for query: String,
+        index: String
+    ) throws -> (snapshot: AppSnapshot, record: ElementRecord) {
+        guard let parsedIndex = Int(index) else {
+            throw ComputerUseError.invalidArguments("unknown element_index '\(index)'")
+        }
+
+        let previous = try currentSnapshot(for: query)
+        let previousVersion = cachedSnapshotVersion(for: query, snapshot: previous)
+        _ = try lookupElement(snapshot: previous, index: index)
+        let current = try refreshSnapshot(
+            for: query,
+            captureScreenshot: false,
+            cacheSnapshot: false
+        )
+
+        switch validateSnapshotTarget(
+            previous: previous,
+            current: current,
+            elementIndex: parsedIndex
+        ) {
+        case .valid:
+            return (current, try lookupElement(snapshot: current, index: index))
+        case .staleWindow:
+            throw ComputerUseError.stateUnavailable(
+                "stale element_index '\(index)' from state version \(previousVersion): the active app window changed since the latest presented state. Call get_app_state again, verify the exact window, and use its new integer index; do not retry the old index."
+            )
+        case .staleElement:
+            throw ComputerUseError.stateUnavailable(
+                "stale element_index '\(index)' from state version \(previousVersion): the indexed target changed since the latest presented state. Call get_app_state again and use the new integer index; do not retry the old index."
+            )
+        }
+    }
+
+    private func validatedCoordinateSnapshot(
+        for query: String,
+        cachedSnapshot: AppSnapshot
+    ) throws -> AppSnapshot {
+        if cachedSnapshot.mode == .fixture {
+            return cachedSnapshot
+        }
+
+        guard cachedSnapshot.screenshotPNGData != nil else {
+            throw ComputerUseError.stateUnavailable(
+                "coordinate input requires a current screenshot. Call get_app_state with disable_screenshot=false, verify the exact app and window, then use coordinates from that state."
+            )
+        }
+
+        let current = try refreshSnapshot(
+            for: query,
+            captureScreenshot: false,
+            cacheSnapshot: false
+        )
+        guard current.windowFingerprint == cachedSnapshot.windowFingerprint else {
+            throw ComputerUseError.stateUnavailable(
+                "stale coordinates: the active app window changed since the screenshot. Call get_app_state again and use coordinates from the new screenshot; do not retry the old coordinates."
+            )
+        }
+
+        return cachedSnapshot
+    }
+
+    private func validatedFocusedSnapshot(for query: String) throws -> AppSnapshot {
+        let previous = try currentSnapshot(for: query)
+        let current = try refreshSnapshot(
+            for: query,
+            captureScreenshot: false,
+            cacheSnapshot: false
+        )
+
+        guard current.windowFingerprint == previous.windowFingerprint else {
+            throw ComputerUseError.stateUnavailable(
+                "the active app window changed before keyboard input. Call get_app_state again, verify the exact window and focus, then retry once."
+            )
+        }
+        guard current.focusedSummary == previous.focusedSummary else {
+            throw ComputerUseError.stateUnavailable(
+                "keyboard focus changed since the latest state. Call get_app_state again and explicitly focus the intended editable element; do not type into the previous target."
+            )
+        }
+
+        return current
+    }
+
+    private func requireValidatedElement(
+        _ record: ElementRecord?,
+        index: String
+    ) throws -> ElementRecord {
+        guard let record else {
+            throw ComputerUseError.invalidArguments("unknown element_index '\(index)'")
+        }
+        return record
+    }
+
     private func actionSnapshotResult(for query: String) throws -> ToolCallResult {
         let snapshot = try refreshSnapshot(for: query, captureScreenshot: false)
         guard returnActionState else {
@@ -975,7 +1087,8 @@ public final class ComputerUseService {
         for query: String,
         captureScreenshot: Bool = true,
         textLimit: SnapshotTextLimit = .defaults,
-        treeLimits: AccessibilityTreeLimits = .defaults
+        treeLimits: AccessibilityTreeLimits = .defaults,
+        cacheSnapshot: Bool = true
     ) throws -> AppSnapshot {
         let app = try AppDiscovery.resolve(query)
         let snapshot = try SnapshotBuilder.build(
@@ -985,11 +1098,22 @@ public final class ComputerUseService {
             treeLimits: treeLimits
         )
 
-        for key in cacheKeys(for: query, snapshot: snapshot) {
-            snapshotsByApp[key] = snapshot
+        if cacheSnapshot {
+            snapshotVersionCounter &+= 1
+            let version = snapshotVersionCounter
+            for key in cacheKeys(for: query, snapshot: snapshot) {
+                snapshotsByApp[key] = snapshot
+                snapshotVersionsByApp[key] = version
+            }
         }
 
         return snapshot
+    }
+
+    private func cachedSnapshotVersion(for query: String, snapshot: AppSnapshot) -> UInt64 {
+        cacheKeys(for: query, snapshot: snapshot).lazy
+            .compactMap { self.snapshotVersionsByApp[$0] }
+            .max() ?? 0
     }
 
     private func lookupElement(snapshot: AppSnapshot, index: String) throws -> ElementRecord {
@@ -2140,32 +2264,23 @@ public final class ComputerUseService {
     ) throws {
         let eventPoint = inputEventPoint(fromScreenStatePoint: point)
 
-        if globalPointerFallbacksEnabled(environment: ProcessInfo.processInfo.environment) {
-            debugInputFallback(
-                tool: "click",
-                targetDescription: targetDescription,
-                snapshot: snapshot
+        guard globalPointerFallbacksEnabled(environment: ProcessInfo.processInfo.environment) else {
+            throw ComputerUseError.message(
+                "click could not be handled through accessibility. Safe coordinate fallback is disabled because pid-posted mouse coordinates are not reliable enough to prevent wrong-window actions. Set OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS=1 to allow a verified physical-pointer click that restores the previous pointer position."
             )
-            InputSimulation.prepareAppForGlobalPointerInput(snapshot.app)
-            try InputSimulation.clickGlobally(at: eventPoint, button: button, clickCount: clickCount)
-            return
         }
 
-        do {
-            try InputSimulation.clickTargeted(
-                at: eventPoint,
-                button: button,
-                clickCount: clickCount,
-                pid: snapshot.app.pid
-            )
-            return
-        } catch {
-            guard globalPointerFallbacksEnabled(environment: ProcessInfo.processInfo.environment) else {
-                throw ComputerUseError.message(
-                    "click could not be handled through accessibility, and global pointer fallback is disabled. Set OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS=1 to allow physical-pointer fallback for this process."
-                )
-            }
-        }
+        debugInputFallback(
+            tool: "click",
+            targetDescription: targetDescription,
+            snapshot: snapshot
+        )
+        try prepareAndRevalidateGlobalPointerTarget(snapshot: snapshot)
+        try InputSimulation.clickGloballyRestoringPointer(
+            at: eventPoint,
+            button: button,
+            clickCount: clickCount
+        )
     }
 
     private func performExplicitMouseClick(
@@ -2180,12 +2295,8 @@ public final class ComputerUseService {
 
         switch method {
         case .appPost:
-            debugClickDecision("requested=app_post executed=pid_post target=\(targetDescription)")
-            try InputSimulation.clickTargeted(
-                at: eventPoint,
-                button: button,
-                clickCount: clickCount,
-                pid: snapshot.app.pid
+            throw ComputerUseError.message(
+                "click_method 'app_post' is unavailable for coordinate input because pid-posted mouse coordinates cannot be verified reliably. Use click_method 'global' with OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS=1."
             )
         case .global:
             guard globalPointerFallbacksEnabled(environment: ProcessInfo.processInfo.environment) else {
@@ -2194,11 +2305,30 @@ public final class ComputerUseService {
                 )
             }
             debugClickDecision("requested=global executed=global_hid target=\(targetDescription)")
-            InputSimulation.prepareAppForGlobalPointerInput(snapshot.app)
-            try InputSimulation.clickGlobally(at: eventPoint, button: button, clickCount: clickCount)
+            try prepareAndRevalidateGlobalPointerTarget(snapshot: snapshot)
+            try InputSimulation.clickGloballyRestoringPointer(
+                at: eventPoint,
+                button: button,
+                clickCount: clickCount
+            )
         case .auto, .accessibility:
             throw ComputerUseError.message(
                 "click_method '\(method.rawValue)' is not a direct mouse event method"
+            )
+        }
+    }
+
+    private func prepareAndRevalidateGlobalPointerTarget(snapshot: AppSnapshot) throws {
+        InputSimulation.prepareAppForGlobalPointerInput(snapshot.app)
+        let appReference = snapshot.app.bundleIdentifier ?? snapshot.app.name
+        let current = try refreshSnapshot(
+            for: appReference,
+            captureScreenshot: false,
+            cacheSnapshot: false
+        )
+        guard current.windowFingerprint == snapshot.windowFingerprint else {
+            throw ComputerUseError.stateUnavailable(
+                "the active app window changed while preparing the global pointer fallback. Call get_app_state again, verify the exact window, and use coordinates from the new screenshot."
             )
         }
     }

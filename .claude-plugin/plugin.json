@@ -1,6 +1,6 @@
 {
   "name": "open-computer-use",
-  "version": "1.1.0",
+  "version": "1.2.0-dev.1",
   "description": "Open-source desktop Computer Use adapted for Claude Code and DeepSeek while preserving the shared OCU Runtime.",
   "author": {
     "name": "Leo",

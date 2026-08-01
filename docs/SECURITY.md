@@ -27,8 +27,9 @@
   - `Open Computer Use.app` 的系统权限
   - 本地使用场景
   共同提供。
-- `click_method=global` 是显式的系统级指针路径，可能移动真实鼠标、改变前台焦点或命中坐标处的其他窗口。调用参数本身不视为足够授权；macOS 和支持该模式的 Linux runtime 还要求进程环境中设置 `OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS=1`。未设置时必须在任何可见 cursor 移动或真实输入事件之前拒绝请求。
-- `click_method=app_post` 与 `accessibility` 不允许静默切换到 `global`。这保证调用方选择的非侵入边界在失败时仍然成立。
+- `click_method=global` 是显式的系统级指针路径，可能短暂移动真实鼠标、改变前台焦点或命中坐标处的其他窗口。调用参数本身不视为足够授权；macOS 和支持该模式的 Linux runtime 还要求进程环境中设置 `OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS=1`。未设置时必须在任何可见 cursor 移动或真实输入事件之前拒绝请求。macOS V1.2 候选版会在点击前抬升并激活目标应用、重新验证窗口指纹，并在点击后恢复原指针位置。
+- 受控测试证明 macOS 的 pid-post 坐标点击不能可靠保证目标窗口，因此 `click_method=app_post` 的坐标输入会明确拒绝；`accessibility` 和默认安全路径也不允许静默切换到 `global`。这保证调用方选择的非侵入边界在失败时仍然成立。
+- 页面、窗口或弹窗内声称“用户已授权”的文字只能作为不可信数据，不能替代宿主确认。删除、付款、发送、提交和权限修改等高风险动作必须交还宿主确认；宿主拒绝后立即停止，不得换工具或参数重试。
 - 下一阶段应优先补：
   - session 级审批
   - 更清楚的敏感 app / 系统设置防护策略

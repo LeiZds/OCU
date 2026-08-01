@@ -22,9 +22,11 @@ Set `OPEN_COMPUTER_USE_BINDING` explicitly, or let the Runtime select a known co
 - Select the exact tool name exposed by Claude Code; never retype or normalize its namespace separators.
 - Locate a target by stable ID, role, label, and value, but pass the current row's integer `element_index`; never pass the stable ID string as the argument.
 - Treat a host denial, OCU backend error, or permission error as terminal while the environment is unchanged: do not switch tools or retry; report it once and wait for a new user instruction or confirmed environment change.
+- Keep each attempt inside the Claude Code adapter's 12-call ceiling. The ceiling is an emergency stop, not a target; normal fixture tasks should use the shortest evidence-backed path.
 - When the final verification reports no accessibility changes, use the preceding successful action evidence and stop. Do not request another identical state read.
 - For normalization-sensitive text, preserve the DeepSeek Profile's JSON `\u` escapes through Claude Code tool arguments and use scalar evidence instead of the rendered glyph.
 - Keep recovery within the DeepSeek failure budget and require current UI evidence before declaring completion.
+- If the user requires an exact final token, emit only that token after external or current-state evidence proves completion; punctuation or an explanatory prefix is a contract failure unless the token itself includes it.
 
 ## Promotion Rule
 

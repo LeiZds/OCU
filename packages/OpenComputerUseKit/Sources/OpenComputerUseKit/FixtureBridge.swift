@@ -40,26 +40,35 @@ public struct FixtureElementState: Codable, Sendable {
 }
 
 public struct FixtureAppState: Codable, Sendable {
+    public let scenario: String
+    public let revision: Int
     public let windowTitle: String
     public let windowBounds: FixtureRect
     public let focusedIdentifier: String?
     public let selectedText: String?
     public let lastCommandID: String?
+    public let evidence: [String: String]
     public let elements: [FixtureElementState]
 
     public init(
+        scenario: String = "default",
+        revision: Int = 0,
         windowTitle: String,
         windowBounds: FixtureRect,
         focusedIdentifier: String?,
         selectedText: String? = nil,
         lastCommandID: String? = nil,
+        evidence: [String: String] = [:],
         elements: [FixtureElementState]
     ) {
+        self.scenario = scenario
+        self.revision = revision
         self.windowTitle = windowTitle
         self.windowBounds = windowBounds
         self.focusedIdentifier = focusedIdentifier
         self.selectedText = selectedText
         self.lastCommandID = lastCommandID
+        self.evidence = evidence
         self.elements = elements
     }
 }
@@ -115,7 +124,12 @@ public enum FixtureBridge {
     public static let distributedNotificationName = Notification.Name("dev.opencodex.opencomputeruse.fixture.command")
 
     public static var stateFileURL: URL {
-        URL(fileURLWithPath: NSTemporaryDirectory())
+        if let explicitPath = ProcessInfo.processInfo.environment["OCU_FIXTURE_STATE_PATH"],
+           !explicitPath.isEmpty
+        {
+            return URL(fileURLWithPath: explicitPath)
+        }
+        return URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("open-computer-use-fixture", isDirectory: true)
             .appendingPathComponent("state.json")
     }

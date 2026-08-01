@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "version": "1.1.0",
+  "tag": "v1.1.0",
+  "commit": "c825396339ce736ed195d6b67a7a7d568c76c27f",
+  "runtimeTreeGitObject": "58566a311b4d2ff660d1f10d2119e5efbe2c77d0",
+  "sha256": {
+    "skill": "3beab558eec80da0f40e0303b571c9bb1af91b62fc977d09140a7fa00e882182",
+    "binary": "c0026964f564423eb0b16d5eac72604d54b500c2dd84e41cadfde04a0b099cf6",
+    "versionSource": "75a183d81e10f9be0a266570a5c9fa98643600ef2260eddc8485a00553ea4106"
+  },
+  "score": 89,
+  "note": "Immutable V1.1 reference. V1.2 tests must use the candidate identity preflight and must not load this runtime by accident."
+}

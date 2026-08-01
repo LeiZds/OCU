@@ -4,7 +4,22 @@ Results from 78 controlled tests (T001-T080) on Codex + Open Computer Use 0.2.0,
 
 Apply these only when preconditions match. This is conditional guidance, not a fixed sequence.
 
-## P0: Screenshot Format Token Overhead
+## P0: PID-Posted Coordinate Clicks Are Not Verifiable
+
+**Finding (V1.2 controlled fixture):** `CGEvent.postToPid` mouse coordinates did not reliably reach the requested target window and could be interpreted by another visible window. Adding window-number fields did not provide a trustworthy delivery guarantee.
+
+**Impact:** Treating a successful event post as a successful click can create a wrong-window mutation.
+
+**Workaround:**
+- Use accessibility actions whenever the current tree exposes a semantic target.
+- `click_method=app_post` coordinate input is rejected instead of being reported as successful.
+- Coordinate click requires a current screenshot and unchanged window fingerprint.
+- The only supported coordinate fallback is explicit `click_method=global` with `OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS=1`; it revalidates the app/window before clicking and restores the previous pointer position afterward.
+- Re-read semantic state or check an independent oracle after the click. Never store the coordinate as reusable experience.
+
+**Scope:** macOS coordinate clicks. Scroll and drag still have separate best-effort delivery paths and are not promoted to the same guarantee.
+
+## P0b: Screenshot Format Token Overhead
 
 **Finding (T062):** OCU returns screenshots as base64-encoded PNG inline in the tool result. A 1113x733 screenshot consumes approximately 100,000-270,000 tokens. This is 8,500x-22,700x more than Codex CU's JPEG file-path approach (~12 tokens).
 
@@ -98,4 +113,4 @@ Apply these only when preconditions match. This is conditional guidance, not a f
 
 All findings above are at locally validated status on macOS + Doubao Browser + Codex host. They have not been cross-validated on other platforms, browsers, or agent hosts. Do not promote to cross-context experience until verified in at least one additional environment.
 
-Total known gaps: 8 (P0: 1, P1: 1, P2: 3, P3: 1, P4: 1, P5: 1). Last updated: 2026-07-24 T079.
+Total known gaps: 9 (P0: 2, P1: 1, P2: 3, P3: 1, P4: 1, P5: 1). Last updated: 2026-08-01 V1.2 controlled fixture.

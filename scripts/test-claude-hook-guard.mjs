@@ -85,19 +85,52 @@ try {
     tool_input: { app: "Fixture", disable_screenshot: true },
     error: "permission denied",
   });
-  const secondFailurePre = run({
+  const terminalFailurePre = run({
     hook_event_name: "PreToolUse",
     session_id: sessionID,
     tool_name: toolName,
     tool_input: { app: "Fixture", disable_screenshot: false },
   });
-  assert.equal(secondFailurePre.stdout, "");
+  const terminalFailureDecision = JSON.parse(terminalFailurePre.stdout);
+  assert.equal(
+    terminalFailureDecision.hookSpecificOutput.permissionDecision,
+    "deny",
+  );
+  assert.match(terminalFailureDecision.systemMessage, /non-retryable/);
+  assert.match(terminalFailureDecision.systemMessage, /change parameters/);
+
+  run({
+    hook_event_name: "UserPromptSubmit",
+    session_id: sessionID,
+    user_prompt: "ordinary failure budget",
+  });
+  const firstOrdinaryFailure = run({
+    hook_event_name: "PreToolUse",
+    session_id: sessionID,
+    tool_name: toolName,
+    tool_input: { app: "Fixture", disable_screenshot: false },
+  });
+  assert.equal(firstOrdinaryFailure.stdout, "");
   run({
     hook_event_name: "PostToolUseFailure",
     session_id: sessionID,
     tool_name: toolName,
     tool_input: { app: "Fixture", disable_screenshot: false },
-    error_message: "backend unavailable",
+    error_message: "transient state unavailable",
+  });
+  const secondOrdinaryFailure = run({
+    hook_event_name: "PreToolUse",
+    session_id: sessionID,
+    tool_name: toolName,
+    tool_input: { app: "Fixture", disable_screenshot: true },
+  });
+  assert.equal(secondOrdinaryFailure.stdout, "");
+  run({
+    hook_event_name: "PostToolUseFailure",
+    session_id: sessionID,
+    tool_name: toolName,
+    tool_input: { app: "Fixture", disable_screenshot: true },
+    error_message: "transient state unavailable again",
   });
   const failureBlocked = run({
     hook_event_name: "PreToolUse",

@@ -12,6 +12,7 @@ final class ElementRecord {
     let rawActions: [String]
     let prettyActions: [String]
     let isSyntheticText: Bool
+    let snapshotFingerprint: String?
 
     init(
         index: Int,
@@ -20,7 +21,8 @@ final class ElementRecord {
         localFrame: CGRect?,
         rawActions: [String],
         prettyActions: [String],
-        isSyntheticText: Bool = false
+        isSyntheticText: Bool = false,
+        snapshotFingerprint: String? = nil
     ) {
         self.index = index
         self.identifier = identifier
@@ -29,12 +31,55 @@ final class ElementRecord {
         self.rawActions = rawActions
         self.prettyActions = prettyActions
         self.isSyntheticText = isSyntheticText
+        self.snapshotFingerprint = snapshotFingerprint
     }
 }
 
 enum SnapshotMode {
     case accessibility
     case fixture
+}
+
+struct SnapshotWindowFingerprint: Equatable, Sendable {
+    let pid: pid_t
+    let windowID: CGWindowID?
+    let title: String
+    let quantizedBounds: [Int]
+
+    init(pid: pid_t, windowID: CGWindowID?, title: String, bounds: CGRect?) {
+        self.pid = pid
+        self.windowID = windowID
+        self.title = title
+        quantizedBounds = bounds.map {
+            [$0.minX, $0.minY, $0.width, $0.height].map { Int(($0 * 10).rounded()) }
+        } ?? []
+    }
+}
+
+enum SnapshotTargetValidation: Equatable {
+    case valid
+    case staleWindow
+    case staleElement
+}
+
+func validateSnapshotTarget(
+    previous: AppSnapshot,
+    current: AppSnapshot,
+    elementIndex: Int
+) -> SnapshotTargetValidation {
+    guard previous.windowFingerprint == current.windowFingerprint else {
+        return .staleWindow
+    }
+
+    guard
+        let previousRecord = previous.elements[elementIndex],
+        let currentRecord = current.elements[elementIndex],
+        previousRecord.snapshotFingerprint == currentRecord.snapshotFingerprint
+    else {
+        return .staleElement
+    }
+
+    return .valid
 }
 
 public struct AccessibilityTreeLimits: Equatable, Sendable {
@@ -108,6 +153,15 @@ public struct AppSnapshot {
     let selectedText: String?
 
     let elements: [Int: ElementRecord]
+
+    var windowFingerprint: SnapshotWindowFingerprint {
+        SnapshotWindowFingerprint(
+            pid: app.pid,
+            windowID: targetWindowID,
+            title: displayWindowTitle(windowTitle, appName: app.name),
+            bounds: windowBounds
+        )
+    }
 
     public var renderedText: String {
         renderedText(style: .fullState)
@@ -389,7 +443,15 @@ enum SnapshotBuilder {
                 element: nil,
                 localFrame: element.frame.cgRect,
                 rawActions: element.actions,
-                prettyActions: element.actions
+                prettyActions: element.actions,
+                snapshotFingerprint: [
+                    element.identifier,
+                    element.role,
+                    element.title ?? "",
+                    element.value ?? "",
+                    element.actions.joined(separator: ","),
+                    element.frame.cgRect.renderedLocalFrame,
+                ].joined(separator: "|")
             )
             records[element.index] = record
 
@@ -842,7 +904,8 @@ private struct TreeRenderer {
             element: root,
             localFrame: localFrame,
             rawActions: actions,
-            prettyActions: prettyActions
+            prettyActions: prettyActions,
+            snapshotFingerprint: "\(lineBody)\(actionsSegment)"
         )
         records[index] = record
 
@@ -894,7 +957,8 @@ private struct TreeRenderer {
             localFrame: resolveLocalFrame(of: element, windowBounds: context.windowBounds),
             rawActions: [],
             prettyActions: [],
-            isSyntheticText: true
+            isSyntheticText: true,
+            snapshotFingerprint: "text|\(text)"
         )
     }
 

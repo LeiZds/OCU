@@ -5,6 +5,10 @@
 - 构建：`swift build`
 - 单元测试：`swift test`
 - 端到端 smoke：`./scripts/run-tool-smoke-tests.sh`
+- V1.1 冻结基线：`make baseline-v11`
+- Agent 适配：`make adaptation-check`、`make app-agent-check`、`make codex-plugin-install-check`
+- V1.2 开发校准：`make v12-calibration`（12 场景 × 3 次配对，单臂统一 90 秒上限）
+- V1.2 正式验收：`make v12-acceptance`（12 场景 × 5 次配对，要求干净工作树）
 - Linux runtime：`(cd apps/OpenComputerUseLinux && go test ./...)`、`./scripts/build-open-computer-use-linux.sh --arch arm64`
 - 本地诊断：
   - `open-computer-use doctor`
@@ -17,6 +21,7 @@
 - 普通 app 的 `get_app_state` 结果依赖 AX tree 和窗口截图，复杂 app 上输出会有差异；Electron/WebView app 的 AX tree 通常很深，当前会压缩空 wrapper 并放宽遍历深度，以优先保留可操作文本、按钮和输入框。
 - Linux runtime 依赖已登录桌面用户 session；缺少 `XDG_RUNTIME_DIR`、`DBUS_SESSION_BUS_ADDRESS` 或 display 环境时，会尝试从 `/run/user/<uid>` 和常见桌面进程自动发现当前用户的 session env。纯 SSH tty 如果找不到桌面 session 仍不能直接访问 AT-SPI GUI tree。
 - GNOME Wayland 截图可能被 compositor 限制，当前 Linux bridge 会把黑图视为无效截图并省略 image block。
+- 本地 Swift 工具链必须包含 XCTest 才能执行 `swift test`。只有 CommandLineTools、没有完整 Xcode/XCTest 的机器会在测试发现阶段报 `no such module XCTest`；此时不能把单测标记为通过，应明确记录环境阻塞，并继续执行可用的 build、smoke 和 agent 回归。
 
 ## 当前故障排查顺序
 

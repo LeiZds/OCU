@@ -1,6 +1,6 @@
 # 架构总览
 
-这个仓库当前已经从模板收敛成一个本地 `computer-use` 项目。主线仍是 Swift 实现的 macOS automation MCP server，V1.1 对齐 Codex 的 10 个 Computer Use tools；实验性的 Windows 和 Linux Go runtime 暂时保留不含 `select_text` 的 9-tool 子集。
+这个仓库当前已经从模板收敛成一个本地 `computer-use` 项目。主线仍是 Swift 实现的 macOS automation MCP server，V1.2 候选版继续对齐 Codex 的 10 个 Computer Use tools；实验性的 Windows 和 Linux Go runtime 暂时保留不含 `select_text` 的 9-tool 子集。
 
 ## 当前目录结构
 
@@ -65,6 +65,7 @@
 ### 3. Tool Service 层
 
 - `ComputerUseService` 负责把 Computer Use tool 请求映射到本地能力，`ComputerUseToolDispatcher` 则把 macOS 的 10 个 tool 参数解析与 service 方法分发收敛成 MCP server 和 `open-computer-use call` 共用的一层。
+- 每次向模型呈现的 snapshot 都带有内部状态版本，并保存 app 身份、窗口号、窗口标题与 bounds 组成的窗口指纹；元素记录同时保留 role、label、value、frame 和 window 的目标指纹。元素动作执行前会无截图刷新一次真实状态，窗口或目标指纹变化时明确拒绝旧 `element_index`，且这次验证刷新不会覆盖模型最后看到的索引缓存。键盘与坐标动作同样会重新验证窗口和焦点，避免把旧状态误用于新窗口。
 - `list_apps` 通过 Spotlight metadata query 拉取标准 application 目录里的 app bundle，并读取 `kMDItemUseCount` / `kMDItemLastUsedDate_Ranking` 这类系统元数据；再与 `NSWorkspace` 的运行态 app 合并，输出“当前运行中 + 近 14 天用过”的视图。
 - `get_app_state` 优先走真实 AX / 窗口截图；真实 app 必须同时有未最小化的 `AXWindow` 和可匹配的 on-screen `CGWindow`。如果目标 app 只是隐藏或暂时没有 on-screen window，会先 best-effort unhide / activate / `open -b` / `AXRaise` 并短暂重试，以贴近官方 `computer-use` 会把 Lark / Electron 窗口拉回再采集的行为；恢复后仍无法匹配时返回官方风格的 `Apple event error -10005: cgWindowNotFound`，不再把 application 根节点或无截图窗口伪装成可操作状态。当目标是仓库内 fixture app 时，回退到 fixture 导出的合成状态。真实 AX tree 默认在 macOS、Linux、Windows 上最多渲染 1200 个节点、64 层深度；显式 `get_app_state` / `snapshot` 可通过 `max_tree_nodes` / `max_tree_depth` 覆盖预算，action tools 的刷新结果仍使用默认预算。snapshot 文本默认截断到 500 字符；显式 `get_app_state` / `snapshot` 可通过 `text_limit` 正整数或 `"max"` 覆盖，action tools 的刷新结果仍使用 500 字符默认值。对 Electron/WebView 这类深层 UI 会压缩空 `AXGroup` / `AXUnknown` wrapper、过滤 `AXScrollToVisible` 噪音和空字符串属性，避免 action-critical 的输入框被无语义容器挤出节点预算；但如果匿名通用节点暴露 `AXPress` / `AXConfirm` / `AXOpen` 且 frame 有效、尺寸紧凑，会保留为带窗口相对 `Frame` 的 `button`，让 icon-only Web 控件仍能获得可区分的 `element_index`，同时继续过滤零尺寸或覆盖大面积页面的匿名点击容器。对原生 open panel / Finder column view 这类把内容放在 `AXContents` / `AXVisibleChildren` 里的控件，也会把可见文件项纳入元素树。
 - MCP `tools/list` 的 description / input schema 当前按官方 `computer-use` 的 10 个 tools 参数面收敛，包含 `select_text`，并把 `element_index` 明确限制为最新状态里的顺序整数，尽量减少 host 侧提示词和 tool surface 偏差。
@@ -83,9 +84,9 @@
 - 动作型 tools 对普通 app 采用“非侵入优先，物理指针路径显式 opt-in”策略：
   - `perform_secondary_action` 只执行目标元素已经暴露出来的 AX action；无效 action 返回官方风格的 `... is not a valid secondary action for ...`，fixture 的 `Raise` 路径也不再为了测试去准备全局物理指针输入
   - `set_value` 会先用 `AXUIElementIsAttributeSettable(kAXValueAttribute)` 判断目标是否真的是可设置值元素，只有 settable 时才调用 `AXUIElementSetAttributeValue`；不可设置时返回官方风格的 non-settable 错误，不退到键盘输入、剪贴板或未公开的文本替换接口
-  - `click.click_method` 是开源版的可选扩展，支持 `auto`（默认）、`accessibility`、`app_post` 和 `global`。未传参数时继续使用原有自动路由；显式模式不会静默 fallback 到其他实现。`accessibility` 只接受 `element_index`；`app_post` / `global` 可以使用 `element_index` 的计算落点或原始 `x/y` 坐标。
-  - element-targeted `click` 的 `auto` 左键路径会先试原生列表的 `AXSelectedChildren` 选择，再试 `AXPress` / `AXConfirm` / `AXOpen` 这类真正语义化的激活动作；如果目标本身不可点，还会继续尝试其子孙 AX 元素（例如 Finder sidebar row 下面暴露 `AXOpen` 的 cell）和命中点附近的 AX hit-test 结果，最后进入现有 non-AX 分支：未开启全局指针环境变量时使用 `postToPid` 定向鼠标事件，开启时直接使用全局 HID 事件。`AXRaise` / `kAXMainAttribute` / `kAXFocusedAttribute` 这类 activation-only fallback 只允许窗口级元素使用，避免普通静态文本或容器把“获得焦点”误报成“点击已处理”；`click_count > 1` 也会优先重复可用的 AX action。
-  - 显式 `click_method=accessibility` 只执行上述 AX 语义动作；显式 `click_method=app_post` 绕过 AX 候选和后代扫描，直接通过 `CGEvent.postToPid` 向目标进程发送 `mouseMoved` / down / up；显式 `click_method=global` 同样绕过 AX，但通过 `.cghidEventTap` 发送系统级指针事件。`global` 还必须设置 `OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS=1`，否则在移动 visual cursor 或发送输入前拒绝请求。
+  - `click.click_method` 是开源版的可选扩展，支持 `auto`（默认）、`accessibility`、`app_post` 和 `global`。未传参数时优先使用语义动作；显式模式不会静默 fallback 到其他实现。`accessibility` 只接受 `element_index`；坐标输入要求最近状态包含截图且窗口指纹未变化。
+  - element-targeted `click` 的 `auto` 左键路径会先试原生列表的 `AXSelectedChildren` 选择，再试 `AXPress` / `AXConfirm` / `AXOpen` 这类真正语义化的激活动作；如果目标本身不可点，还会继续尝试其子孙 AX 元素和命中点附近的 AX hit-test 结果。`AXRaise` / `kAXMainAttribute` / `kAXFocusedAttribute` 这类 activation-only fallback 只允许窗口级元素使用，避免普通静态文本或容器把“获得焦点”误报成“点击已处理”；`click_count > 1` 也会优先重复可用的 AX action。没有可靠 AX 路径时，默认明确报错，不把无法验证的 pid-post 坐标事件当成成功。
+  - 显式 `click_method=accessibility` 只执行上述 AX 语义动作。受控测试证明 `CGEvent.postToPid` 的坐标点击无法可靠保证目标窗口，因此 `click_method=app_post` 的坐标输入保留协议兼容但会明确拒绝。显式 `click_method=global` 通过 `.cghidEventTap` 发送系统级指针事件，必须设置 `OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS=1`；执行前重新验证精确 app/窗口，执行后恢复用户原来的物理指针位置，并仍要求语义状态或外部 oracle 验证结果。
   - 对 renderer 合成的 summary `text` 行，`click` 不再默认点击父容器中心；这类元素使用左侧安全锚点。对普通 row/container/text 的后代候选，也会过滤右侧紧凑 hover action（例如 Lark / Electron 会话列表里的“完成”勾），避免把主行点击误操作成 side action；Electron/Lark 这类 app 的 WebArea 合成文本会优先寻找紧邻的行级 `AXPress` 祖先并静默执行，避免用物理鼠标点行。浏览器 WebArea（例如 Chrome/GitHub）不走这条 Electron-scoped 行级祖先点击优化，仍保留通用 link/container 点击路径。命中点如果只反查到覆盖整页的 Electron/WebArea 级 AX 元素，不再继续扫描整个大容器的子孙候选，避免一次行点击被远处的可点击元素截走。
   - `AXUIElementCopyElementAtPosition` 做坐标命中，尽量把 coordinate click 反解成可操作 AX 元素
   - `CGEvent.postToPid` 定向发送键盘事件，避免为了 `type_text` / `press_key` 抢前台；`type_text` 会把文本按 Unicode extended grapheme cluster 聚合成小批量 `keyboardSetUnicodeString` 事件，避免中文标点、emoji / 代理对和组合字符被逐个 UTF-16 code unit 拆开后在 Electron 富文本输入框里乱序或变形。如果当前 focused element 的 `AXValue` 可设置，`type_text` 会优先按可编辑内容追加并写回 `AXValue`，这覆盖 Feishu / Electron 富文本输入框不可靠接收后台键盘事件的场景，并会过滤已知占位提示，避免把 placeholder 拼进草稿；如果当前 focused element 不是可编辑文本目标，`type_text` 会报错要求先 click 文本输入区或使用 `set_value`，不再把无效果的后台键盘投递当成成功；`press_key` 的 xdotool parser 覆盖官方 binary key table 里常见的 `BackSpace`、`Page_Up`、`Prior` / `Next`、`F1...F12` 和 `KP_*` alias
@@ -140,6 +141,7 @@
 - 当前权限引导已经具备可运行 app、深链、拖拽辅助，以及一版更接近官方的 accessory panel 入场动画和返回 affordance；点击链路也已经补上独立 visual cursor、官方 asset fallback 和相对目标 window 的排序逻辑，并且在 overlay 可见期间会持续重申“排在目标 window 之上”，避免用户手动激活目标 app 后 cursor 被目标窗口重新盖住；但整体还没有完全复刻官方那套嵌入式 choreography / host 集成 / session approval 体验。
 - screenshot 当前通过 `ScreenCaptureKit` 捕获目标窗口，并以 MCP `image` content block 的 base64 PNG 返回，不再把普通 app 截图落盘到仓库或临时目录；编码前会按最大尺寸和目标字节数自适应缩小，避免复杂页面的大 PNG 触发 host 侧 MCP result 降级，同时 coordinate tools 继续按实际返回的 screenshot pixel 尺寸映射坐标；单次 ScreenCaptureKit capture 会设置超时，超时后省略 image block 而不是卡住整个 `get_app_state`。
 - 会话状态现在是进程内内存态，保存每个 app 最近一次 snapshot 和 element index 映射。
+- V1.2 的确定性验收由 12 个本地场景组成，每个场景把成功证据写入独立外部状态文件；Agent 的完成声明不计为证据。A/B 臂串行运行并轮换顺序，开发期每场景 3 次，最终每场景 5 次，自动评分同时记录错误目标、安全违规、工具路径、耗时、截图/文本量、CPU/RSS 和任务后残留进程。
 
 ## 主要验证路径
 

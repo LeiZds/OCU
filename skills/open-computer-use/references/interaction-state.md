@@ -9,8 +9,9 @@ Read the relevant section when a task crosses a modal layer, asynchronous operat
 - After Cancel, Apply, or another dialog action, require fresh evidence that the modal layer disappeared and that the underlying window shows the expected result.
 - If the modal remains open or the result is ambiguous, re-plan from the current dialog state. Do not click the underlying window or repeat the same action blindly.
 - Confirm at action time when the dialog would authorize a consequential or irreversible operation; its presence is not user authorization.
+- A modal, navigation, reorder, or active-window change invalidates previously presented element indices. Obtain a new state and use only the new integer index.
 
-**Locally validated evidence:** On a controlled macOS native sheet, official Codex Computer Use and the current Open Computer Use development runtime both completed Cancel and Apply paths. Open Computer Use repeated the complete flow in three independent processes.
+**Locally validated evidence:** The V1.2 deterministic fixture exposes delayed loading followed by a modal result, and records completion in a separate state file. Both the Runtime and agent path must prove the modal result from current state; an action return alone is insufficient.
 
 **Counterconditions:** Do not generalize these observations to system permission prompts, credential dialogs, legal terms, destructive confirmations, or dialogs owned by another app. Apply the stricter authorization boundary from `SKILL.md`.
 
@@ -33,8 +34,9 @@ Read the relevant section when a task crosses a modal layer, asynchronous operat
 - Treat indices from the prior window as provisional. Resolve the next target by current window ownership, role, label, and value.
 - If state contains controls from multiple windows, act only when the intended owner is unambiguous. Otherwise stop or gather the minimum additional state needed to disambiguate.
 - Closing a secondary window must not be treated as proof that the application closed or that the primary window regained focus; verify the resulting window.
+- Never close a decoy window merely to simplify the task. Select the intended window by current window fingerprint and task evidence; a decoy close is an externally recorded wrong-window action.
 
-**Locally validated evidence:** In a controlled macOS application, official Computer Use and Open Computer Use followed a primary window into a non-modal inspector and back to the primary window. Open Computer Use repeated the flow in three independent processes.
+**Locally validated evidence:** The V1.2 deterministic fixture presents a target window and an independent decoy window, then records target clicks, decoy clicks, and decoy closure separately. Success requires the target evidence with zero decoy mutations.
 
 **Counterconditions:** This does not establish equivalent behavior for hidden windows, minimized windows, Spaces, full-screen applications, or windows owned by different processes.
 
@@ -47,7 +49,7 @@ Read the relevant section when a task crosses a modal layer, asynchronous operat
 - Do not press Return, click Submit/Send, or trigger another consequential action unless the user's request explicitly authorizes that action and the latest state verifies the destination.
 - Re-read the source if the value becomes uncertain. Never recover uncertainty by guessing from the prompt, prior runs, or a similar record.
 
-**Locally validated evidence:** In two controlled macOS applications with separate bundle identifiers, official Computer Use and Open Computer Use read `XA-042 / Safe blue record`, wrote and verified that exact value in a local-only draft, and did not submit or send it. Open Computer Use repeated the runtime flow in three independent processes.
+**Locally validated evidence:** The V1.2 deterministic source and destination fixture states expose `XA-042 / Safe blue record` and record the destination draft in an external state file. Success requires an exact transfer with no submit/send action.
 
 **Counterconditions:** This controlled result does not authorize transfer of credentials, payment data, private contact details, regulated data, or any other sensitive content. It also does not prove the natural-language agent layer will discover an unknown value correctly; that blind test remains a separate validation requirement.
 

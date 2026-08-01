@@ -46,7 +46,7 @@ public enum ToolDefinitions {
                         enumValues: ["left", "right", "middle"]
                     ),
                     "click_method": stringProperty(
-                        description: "Click implementation: auto (default), accessibility, app_post, or global. Accessibility requires element_index. app_post sends an event directly to the target app or window. Global may move the system pointer and requires OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS=1.",
+                        description: "Click implementation: auto (default), accessibility, app_post, or global. Accessibility requires element_index. app_post is retained for compatibility but is rejected when coordinate delivery cannot be verified. Global temporarily moves and then restores the pointer, and requires OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS=1.",
                         enumValues: ClickMethod.allCases.map(\.rawValue)
                     ),
                 ],

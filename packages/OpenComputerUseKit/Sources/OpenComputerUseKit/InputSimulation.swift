@@ -46,13 +46,9 @@ enum InputSimulation {
     static let maxKeyboardUnicodeChunkLength = 64
 
     static func prepareAppForGlobalPointerInput(_ app: RunningAppDescriptor) {
-        if raiseAppWindowViaAccessibility(pid: app.pid) {
-            Thread.sleep(forTimeInterval: 0.12)
-            return
-        }
-
+        let raised = raiseAppWindowViaAccessibility(pid: app.pid)
         _ = app.runningApplication.activate(options: [.activateAllWindows])
-        Thread.sleep(forTimeInterval: 0.25)
+        Thread.sleep(forTimeInterval: raised ? 0.25 : 0.35)
     }
 
     static func clickGlobally(at point: CGPoint, button: MouseButtonKind, clickCount: Int) throws {
@@ -67,16 +63,27 @@ enum InputSimulation {
         }
     }
 
-    static func clickTargeted(at point: CGPoint, button: MouseButtonKind, clickCount: Int, pid: pid_t) throws {
-        guard let source = CGEventSource(stateID: .combinedSessionState) else {
-            throw ComputerUseError.message("Failed to create app-post event source.")
-        }
+    static func clickGloballyRestoringPointer(
+        at point: CGPoint,
+        button: MouseButtonKind,
+        clickCount: Int
+    ) throws {
+        let originalPoint = CGEvent(source: nil)?.location
+        try clickGlobally(at: point, button: button, clickCount: clickCount)
 
-        for _ in 0..<max(clickCount, 1) {
-            try postMouseEventToPid(type: .mouseMoved, source: source, point: point, button: button.cgButton, clickState: clickCount, pid: pid)
-            try postMouseEventToPid(type: button.downEvent, source: source, point: point, button: button.cgButton, clickState: clickCount, pid: pid)
-            try postMouseEventToPid(type: button.upEvent, source: source, point: point, button: button.cgButton, clickState: clickCount, pid: pid)
+        guard let originalPoint, originalPoint != point else {
+            return
         }
+        guard let source = CGEventSource(stateID: .hidSystemState) else {
+            throw ComputerUseError.message("Click succeeded, but the original pointer position could not be restored.")
+        }
+        try postMouseEvent(
+            type: .mouseMoved,
+            source: source,
+            point: originalPoint,
+            button: button.cgButton,
+            clickState: 0
+        )
     }
 
     static func scrollTargeted(at point: CGPoint, direction: String, pages: Double, pid: pid_t) throws {
@@ -231,7 +238,14 @@ enum InputSimulation {
         Thread.sleep(forTimeInterval: 0.03)
     }
 
-    private static func postMouseEventToPid(type: CGEventType, source: CGEventSource, point: CGPoint, button: CGMouseButton, clickState: Int, pid: pid_t) throws {
+    private static func postMouseEventToPid(
+        type: CGEventType,
+        source: CGEventSource,
+        point: CGPoint,
+        button: CGMouseButton,
+        clickState: Int,
+        pid: pid_t
+    ) throws {
         guard let event = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: point, mouseButton: button) else {
             throw ComputerUseError.message("Failed to create mouse event \(type.rawValue).")
         }

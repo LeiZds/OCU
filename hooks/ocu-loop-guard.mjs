@@ -58,7 +58,7 @@ function handlePreToolUse() {
   const completed = state.calls.filter((call) => call.resultHash);
   const hardLimit = positiveInteger(
     process.env.OCU_CLAUDE_MAX_CALLS_PER_TURN,
-    30,
+    12,
   );
 
   if (state.calls.length >= hardLimit) {
@@ -76,6 +76,11 @@ function handlePreToolUse() {
 
   const matching = completed.filter((call) => call.signature === signature);
   const latestCompleted = completed.at(-1);
+  if (latestCompleted?.terminalFailure === true) {
+    deny(
+      `OCU loop guard: ${latestCompleted.tool} returned a non-retryable host, permission, or backend refusal. Stop OCU calls immediately; do not switch tools, change parameters, or retry until the environment is confirmed changed.`,
+    );
+  }
   const appKey = tool === "get_app_state"
     ? normalizedAppKey(input.tool_input?.app)
     : null;
@@ -152,6 +157,7 @@ function handlePostToolUse(forceFailed = false) {
     null;
   pending.resultHash = resultHash(toolResult);
   pending.failed = forceFailed || resultFailed(toolResult);
+  pending.terminalFailure = pending.failed && resultRequiresImmediateStop(toolResult);
   pending.noAccessibilityChanges =
     !pending.failed && resultHasNoAccessibilityChanges(toolResult);
   saveState(state);
@@ -294,6 +300,13 @@ function resultFailed(toolResult) {
 function resultHasNoAccessibilityChanges(toolResult) {
   return stableStringify(toolResult ?? null).includes(
     "No accessibility changes since the previous presented state.",
+  );
+}
+
+function resultRequiresImmediateStop(toolResult) {
+  const text = stableStringify(toolResult ?? null);
+  return /permission denied|permission is required|host (?:denied|refused)|backend unavailable|not connected|non-retryable/i.test(
+    text,
   );
 }
 

@@ -816,6 +816,54 @@ final class OpenComputerUseKitTests: XCTestCase {
         XCTAssertEqual(windowRelativeFrame(elementFrame: textFieldGlobal, windowBounds: window), textField)
     }
 
+    func testSnapshotTargetValidationAcceptsTheSameWindowAndElement() {
+        let previous = makeSnapshotForTargetValidation(
+            windowTitle: "Task",
+            elementFingerprint: "button|Confirm"
+        )
+        let current = makeSnapshotForTargetValidation(
+            windowTitle: "Task",
+            elementFingerprint: "button|Confirm"
+        )
+
+        XCTAssertEqual(
+            validateSnapshotTarget(previous: previous, current: current, elementIndex: 1),
+            .valid
+        )
+    }
+
+    func testSnapshotTargetValidationRejectsAChangedWindow() {
+        let previous = makeSnapshotForTargetValidation(
+            windowTitle: "Task",
+            elementFingerprint: "button|Confirm"
+        )
+        let current = makeSnapshotForTargetValidation(
+            windowTitle: "Decoy",
+            elementFingerprint: "button|Confirm"
+        )
+
+        XCTAssertEqual(
+            validateSnapshotTarget(previous: previous, current: current, elementIndex: 1),
+            .staleWindow
+        )
+    }
+
+    func testSnapshotTargetValidationRejectsAReindexedElement() {
+        let previous = makeSnapshotForTargetValidation(
+            windowTitle: "Task",
+            elementFingerprint: "button|Confirm"
+        )
+        let current = makeSnapshotForTargetValidation(
+            windowTitle: "Task",
+            elementFingerprint: "button|Delete"
+        )
+
+        XCTAssertEqual(
+            validateSnapshotTarget(previous: previous, current: current, elementIndex: 1),
+            .staleElement
+        )
+    }
+
     func testToolDescriptionsMatchOfficialComputerUseSurface() {
         let tools = Dictionary(uniqueKeysWithValues: ToolDefinitions.all.map { ($0.name, $0) })
 
@@ -2266,6 +2314,43 @@ final class OpenComputerUseKitTests: XCTestCase {
         let dy = end.y - start.y
         let length = max(hypot(dx, dy), 0.001)
         return CGVector(dx: dx / length, dy: dy / length)
+    }
+
+    private func makeSnapshotForTargetValidation(
+        windowTitle: String,
+        elementFingerprint: String
+    ) -> AppSnapshot {
+        let runningApplication = NSRunningApplication.current
+        let app = RunningAppDescriptor(
+            name: "SnapshotValidationFixture",
+            bundleIdentifier: "dev.opencomputeruse.snapshot-validation",
+            pid: runningApplication.processIdentifier,
+            runningApplication: runningApplication
+        )
+        let record = ElementRecord(
+            index: 1,
+            identifier: "target",
+            element: nil,
+            localFrame: CGRect(x: 10, y: 10, width: 100, height: 30),
+            rawActions: ["AXPress"],
+            prettyActions: ["Press"],
+            snapshotFingerprint: elementFingerprint
+        )
+
+        return AppSnapshot(
+            app: app,
+            windowTitle: windowTitle,
+            windowBounds: CGRect(x: 100, y: 100, width: 640, height: 480),
+            targetWindowID: 42,
+            targetWindowLayer: 0,
+            screenshotPNGData: nil,
+            mode: .fixture,
+            treeLines: ["1 button Confirm"],
+            focusedSummary: nil,
+            focusedElement: nil,
+            selectedText: nil,
+            elements: [1: record]
+        )
     }
 
     private func makeNoisyTestImage(width: Int, height: Int) throws -> CGImage {
