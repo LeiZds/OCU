@@ -18,6 +18,7 @@
 - **适配分层**: 保持 Common Core、Host Adapter、Model Profile 与稀疏 Binding 分离；收紧 Claude Code × DeepSeek 的调用预算、拒绝停止、专业表达和完成证据。
 - **自动验收**: 扩展串行配对 runner、无效样本分类、CPU/RSS/进程观测和 100 分制自动评分；统一单臂 90 秒资源保护上限。
 - **校准结论**: 已完成超过 30 组有效开发配对并修复几何焦点缺陷；后续样本因 Codex usage limit 暂停，未达到正式发布条件。
+- **Claude 边界验证**: Claude Code 已加载 V1.2 插件、10 个 MCP 工具和 DeepSeek profile；在 dev app 缺少 Accessibility 权限时，模型按约束只报告一次并停止。该样本不计成功，授权后仍需重跑。
 
 ### 🧠 Design Intent (Why)
 V1.2 不保存网站坐标或成功点击脚本，而是把可迁移的状态验证、安全、恢复和宿主/模型差异沉淀到正确分层。任何发布分数必须来自可重复外部证据，基础设施失败不得混入行为评分。
