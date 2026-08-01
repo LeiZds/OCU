@@ -40,6 +40,8 @@ OCU V1.1 已正确安装到 Codex，并通过全新 Codex CLI 会话真实调用
 
 发布前又发现 Codex GitHub Marketplace 原先只复制 `plugins/open-computer-use` 子目录，里面没有 Runtime 二进制。Marketplace source 已改为仓库根目录；隔离安装在模拟 GitHub 无 `.build` 环境下确认 manifest、Skill、launcher 和 `dist` Runtime 同时存在，MCP 握手返回 `1.1.0` 与 10 个工具。正式版全新 Codex CLI 连通性结果为 `OCU_CODEX_V110_OK 24`。
 
+推送后再次使用 README 中的 GitHub URL 命令做全新安装：Codex 与 Claude Code 均解析到远端提交 `b4e1344` 的 `1.1.0`；Codex 通过下载包中的 `dist` Runtime 完成 10 工具握手，Claude 下载包同时包含 Skill、Hook 和 Runtime，并以 `claude-code + deepseek` Profile 完成 10 工具握手。
+
 ## 证据边界
 
 - 官方基线固定为 `1.0.1000550`，Skill SHA-256 为 `a52ede355c6637d05be9da5e3f19dbfd5f23fa5ec4c9513e3188bc8a57429c79`。

@@ -82,4 +82,5 @@ Claude Code Harness、DeepSeek 和 OCU 必须分别可观测。最终回复不�
 - 重新安装并重载修复后的 Claude 插件，正常滚动路径以 `get_app_state → scroll → get_app_state` 完成；该次 Auto 模式直接允许滚动，因此真实拒绝分支仍以确定性 Hook 测试为证据。
 - 发布安装审计发现 Codex Marketplace 原先只复制不含 Runtime 的插件子目录。Marketplace source 已切到仓库根目录；隔离安装移除本地 `.build` 后仍通过 `dist` Runtime 完成 MCP 握手，返回 `1.1.0` 与 10 个工具。
 - 正式 `1.1.0` 在本机 Codex 与 Claude Code 两端完成单次 `list_apps` 连通性验证，均返回 24 个应用；两端旧开发缓存已移入废纸篓，只保留 `1.1.0`。
+- 发布提交 `b4e1344` 已直接推送到 `LeiZds/OCU/main`。从 GitHub URL 新建的隔离 Codex 与 Claude Code 配置均成功安装 `1.1.0`；Codex 在没有本地 `.build` 的下载包中从 `dist` 启动，Claude 包同时包含 Skill 与 Hook，两端 MCP 均返回 10 个工具。
 - `swift test --filter OpenComputerUseKitTests.testActivationOnlyClickFallbackKeepsEditableFocusPaths` 仍被仓库既有 Swift/XCTest 工具链问题阻断：`StandaloneCursorSupportTests` 无法加载 `XCTest`。

@@ -208,7 +208,7 @@ Bindings（只保存组合特例）
 - [x] 完成 Claude Code × DeepSeek 提示注入边界样本：仅一次只读状态调用、零动作、外部 fixture 状态不变。
 - [x] 修复 Claude Code Auto 宿主拒绝后换工具/重试的问题；Binding 与 Hook 双层停止门通过定向回归，正常滚动路径复测通过。
 - [x] 完成 Claude Code + DeepSeek 黑盒回归（TRAE CN 仅作启动和观察界面）。
-- [ ] 更新版本、history、安装说明并直接推送 GitHub。
+- [x] 更新版本、history、安装说明并直接推送 GitHub；从 GitHub URL 对 Codex 与 Claude Code 分别完成干净安装和 MCP 握手。
 
 ## 决策记录
 
@@ -263,3 +263,4 @@ Bindings（只保存组合特例）
 - 2026-08-01：组合滚动样本发现 DeepSeek 会在 Claude Code Auto 拒绝后换工具并重试。Binding 增加宿主拒绝停止规则；Hook 通过“PreToolUse 后没有完成事件”识别 Harness 拒绝或中断并阻止后续 OCU，避免把宿主安全边界当作普通 Runtime 恢复。
 - 2026-08-01：候选版本晋升为 `1.1.0`，Codex 和 Claude Code 本机安装均只保留正式版缓存。全新 Codex CLI 与重载后的 Claude Code 分别只调用一次 `list_apps` 并输出 `OCU_CODEX_V110_OK 24`、`OCU_CLAUDE_V110_OK 24`。
 - 2026-08-01：Codex GitHub Marketplace source 从不含 Runtime 的插件子目录改为仓库根目录；隔离安装在移除本地 `.build` 后仍从 `dist` 启动，MCP 握手返回 `1.1.0` 和 10 个工具。
+- 2026-08-01：`b4e1344` 已直接推送到 `LeiZds/OCU` 的 `main`，未创建 PR。随后按 README 的 GitHub URL 命令分别在临时 Codex Home 与 Claude Config 中干净安装：两端均解析为 `1.1.0`，包含 Runtime、Skill 与对应 Adapter，并完成 10 工具 MCP 握手。
