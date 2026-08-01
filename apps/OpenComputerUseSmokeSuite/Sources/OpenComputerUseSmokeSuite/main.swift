@@ -35,7 +35,7 @@ final class MCPClient {
         _ = try request(method: "initialize", params: [
             "clientInfo": [
                 "name": "OpenComputerUseSmokeSuite",
-                "version": "1.1.0-dev.1",
+                "version": "1.1.0",
             ],
             "capabilities": [:],
             "protocolVersion": "2025-03-26",
@@ -284,6 +284,46 @@ enum OpenComputerUseSmokeSuite {
             "value": "set-value-ok",
         ])
         try expect(state.contains("set-value-ok"), "set_value should update the text field")
+
+        print("6a. Unicode scalar evidence")
+        state = try client.callTool("set_value", arguments: [
+            "app": appName,
+            "element_index": index["fixture-input"]!.index,
+            "value": "Cafe\u{301}|",
+        ])
+        try expect(
+            state.contains(
+                "Unicode Scalars: [U+0043 U+0061 U+0066 U+0065 U+0301 U+007C]; NFC=no"
+            ),
+            "decomposed Unicode should expose its exact scalar sequence and NFC=no"
+        )
+        state = try client.callTool("set_value", arguments: [
+            "app": appName,
+            "element_index": index["fixture-input"]!.index,
+            "value": "Caf\u{00E9}|",
+        ])
+        try expect(
+            state.contains(
+                "Unicode Scalars: [U+0043 U+0061 U+0066 U+00E9 U+007C]; NFC=yes"
+            ),
+            "precomposed Unicode should expose its exact scalar sequence and NFC=yes"
+        )
+        state = try client.callTool("set_value", arguments: [
+            "app": appName,
+            "element_index": index["fixture-input"]!.index,
+            "value": "Caf\u{00E9}\u{301}|",
+        ])
+        try expect(
+            state.contains(
+                "Unicode Scalars: [U+0043 U+0061 U+0066 U+00E9 U+0301 U+007C]; NFC=yes"
+            ),
+            "visually similar precomposed-plus-combining Unicode should remain distinguishable"
+        )
+        state = try client.callTool("set_value", arguments: [
+            "app": appName,
+            "element_index": index["fixture-input"]!.index,
+            "value": "set-value-ok",
+        ])
 
         print("7. type_text")
         let inputFrame = index["fixture-input"]!.frame

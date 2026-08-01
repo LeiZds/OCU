@@ -1,5 +1,11 @@
 # 功能发布记录
 
+## 2026-08
+
+| 日期 | 功能域 | 用户价值 | 变更摘要 |
+| --- | --- | --- | --- |
+| 2026-08-01 | V1.1 Agent 适配架构 | 同一套 OCU Runtime 可以按 Codex、Claude Code、WorkBuddy 宿主和 GPT、DeepSeek 模型分别加载约束，减少模型长链路、重复读取、错误恢复和宿主权限绕过。 | 发布 `1.1.0`：增加 Host Adapter、Model Profile、稀疏 Binding、Claude Code 插件与循环守卫；补齐 macOS 第十个 `select_text` 工具、Unicode Scalars/NFC 证据、Codex 插件安装布局校验和六场景 A/B。当前 Codex 配对 OCU 6/6、官方 5/6，阶段评分 89/100；样本仍按描述性证据处理。 |
+
 ## 2026-07
 
 | 日期 | 功能域 | 用户价值 | 变更摘要 |

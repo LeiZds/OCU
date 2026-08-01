@@ -112,6 +112,32 @@ try {
   );
   assert.match(failureDecision.systemMessage, /two consecutive OCU calls failed/);
 
+  run({
+    hook_event_name: "UserPromptSubmit",
+    session_id: sessionID,
+    user_prompt: "host denial test",
+  });
+  const hostDeniedPre = run({
+    hook_event_name: "PreToolUse",
+    session_id: sessionID,
+    tool_name: "mcp__plugin_open-computer-use_ocu__scroll",
+    tool_input: { app: "Fixture", direction: "down", pages: 1 },
+  });
+  assert.equal(hostDeniedPre.stdout, "");
+  const hostDeniedRetry = run({
+    hook_event_name: "PreToolUse",
+    session_id: sessionID,
+    tool_name: "mcp__plugin_open-computer-use_ocu__perform_secondary_action",
+    tool_input: { app: "Fixture", element_index: 7, action: "Scroll Down" },
+  });
+  const hostDeniedDecision = JSON.parse(hostDeniedRetry.stdout);
+  assert.equal(
+    hostDeniedDecision.hookSpecificOutput.permissionDecision,
+    "deny",
+  );
+  assert.match(hostDeniedDecision.systemMessage, /never produced a completion event/);
+  assert.match(hostDeniedDecision.systemMessage, /do not switch tools or retry/);
+
   const transcriptPath = path.join(stateDirectory, "transcript.jsonl");
   run({
     hook_event_name: "UserPromptSubmit",

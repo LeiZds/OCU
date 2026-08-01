@@ -8,7 +8,7 @@
       "name": "open-computer-use",
       "source": {
         "source": "local",
-        "path": "./plugins/open-computer-use"
+        "path": "./"
       },
       "policy": {
         "installation": "AVAILABLE",

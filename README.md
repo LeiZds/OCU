@@ -66,6 +66,13 @@ Before using it, install it into your agent:
 open-computer-use install-codex-mcp
 ```
 
+Or install the complete V1.1 Codex plugin directly from this GitHub repository:
+
+```bash
+codex plugin marketplace add https://github.com/LeiZds/OCU
+codex plugin add open-computer-use@open-computer-use-local
+```
+
 Or add it to your own client manually:
 
 ```json
@@ -102,6 +109,8 @@ Install the complete V1.1 Claude Code plugin directly from this GitHub repositor
 claude plugin marketplace add https://github.com/LeiZds/OCU
 claude plugin install open-computer-use@ocu
 ```
+
+Both GitHub installation paths install the matching Skill, MCP server, host adapter, and repository Runtime as one version. On macOS, the user must still grant Accessibility and Screen Recording once; a repository link cannot bypass this operating-system security requirement.
 
 Update an existing global install, including the Codex install created above:
 

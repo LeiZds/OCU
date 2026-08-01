@@ -31,8 +31,8 @@
 
 ### Codex Harness
 
-- Codex App：`26.721.41059`；Codex CLI：`0.146.0-alpha.3.1`。
-- 官方 Computer Use 插件：`1.0.1000502`，通过持久化 `node_repl + @oai/sky` wrapper 使用。
+- 初始研究基线为 Codex App `26.721.41059`、Codex CLI `0.146.0-alpha.3.1`、官方 Computer Use `1.0.1000502`。
+- 2026-08-01 当前回归基线已更新为官方 Computer Use `1.0.1000550`，继续通过持久化 `node_repl + @oai/sky` wrapper 使用；旧 `1.0.1000502` baseline 文件保留用于历史复现。
 - 官方协议面包含 10 个工具；优先 Accessibility Tree，截图以本地 `file://` URL 传递。
 - 官方 Runtime 保留 Diff 状态、动作后自动稳定等待约 1 秒并在加载态延长至约 5 秒。
 - Codex 的 Harness 可在同一次持久 JavaScript 会话中组合动作与验证读取，这是效率基准之一。
@@ -202,7 +202,12 @@ Bindings（只保存组合特例）
 - [x] 完成 Codex 内部 V1.0 首轮基线配对与暂定评分；剩余场景继续作为 V1.1 回归覆盖，不用当前样本宣称统计等价。
 - [x] 实现十工具 parity、紧凑指令和 Claude 插件包装。
 - [x] 完成 Codex V1.1 五场景最终候选配对；OCU 五组任务与方法均通过，官方四组完整通过、Unicode 组任务完成但方法失败。当前仍按描述性样本处理，不宣称统计等价。
-- [ ] 完成 Claude Code + DeepSeek 黑盒回归（TRAE CN 仅作启动和观察界面）。
+- [x] 修复 Codex Adapter 本地安装布局并完成真实 Harness 连通性验证；全新 Codex CLI 会话通过显式插件引用调用 `open-computer-use/list_apps`，返回 23 个应用。
+- [x] 以当前官方 Computer Use `1.0.1000550` 重跑六组 Codex 配对：OCU 6/6、官方 5/6；正式提示注入配对通过，阶段评分更新为 89/100，样本仍按描述性证据处理。
+- [x] 完成 TRAE Claude Code × DeepSeek 基础闭环，并为精确 Unicode 增加 scalar/NFC 可观测证据；headless FixtureBridge 的真实 Claude Code MCP 会话已正确完成分解式 Unicode、中文和 emoji 验证。
+- [x] 完成 Claude Code × DeepSeek 提示注入边界样本：仅一次只读状态调用、零动作、外部 fixture 状态不变。
+- [x] 修复 Claude Code Auto 宿主拒绝后换工具/重试的问题；Binding 与 Hook 双层停止门通过定向回归，正常滚动路径复测通过。
+- [x] 完成 Claude Code + DeepSeek 黑盒回归（TRAE CN 仅作启动和观察界面）。
 - [ ] 更新版本、history、安装说明并直接推送 GitHub。
 
 ## 决策记录
@@ -248,3 +253,13 @@ Bindings（只保存组合特例）
 - 2026-07-28：Claude 插件 MCP server 从重复的 `open-computer-use` 缩短为 `ocu`。DeepSeek 曾把暴露名中的下划线/连字符重拼三次；Host Adapter 与测试提示现要求只选择 Harness 已暴露的精确名称。复测基础、Unicode、重复文本选择和滚动分别以 4、5、4、3 次调用通过。
 - 2026-07-28：系统设置授权操作中，Codex 官方 Computer Use 的可见结构索引与实际命中曾不一致，误移除“豆包”辅助功能条目；已立即恢复应用条目并还原原来的关闭状态。此后权限操作只使用目标 Bundle ID 的 `tccutil reset`、明确的添加按钮和完整 App 路径，不再按列表行执行删除。
 - 2026-07-29：专用 TRAE 工作区只加载本地 V1.1 插件后，Claude Code `2.1.220` + DeepSeek 的基础任务已把外部 fixture 正确改为目标文本和 Counter 1，但在最终 `get_app_state` 返回无变化后又请求读取；人工拒绝会把已完成任务标记为 `Tool interrupted`，而仅比较完整参数又会被 `disableDiff=true` 绕过。Claude Code × DeepSeek Binding 现明确“最终无变化验证后停止”，PreToolUse 守卫也会在同一应用无后续动作时阻止下一次读取，不受可选读取参数变化影响。
+- 2026-07-29：重建后的 Dev App 完成 Accessibility 与 Screen Recording 重新授权，`doctor` 双项通过。专用 TRAE 工作区中的 Claude Code `2.1.220` + DeepSeek 随后以严格 `get_app_state → set_value → click → get_app_state` 四次调用完成基础闭环，外部 fixture 与 Codex 官方 Computer Use 双重确认文本为 `TRAE-V11-BASIC-04`、Counter 为 1；模型只输出 `CLAUDE_OCU_FIXTURE_OK`，没有第五次读取。任务结束后的 12 秒资源采样中 App Agent CPU 为 0%、RSS 约 20 MB，未复现持续空转。
+- 2026-07-29：真实 TRAE Unicode 样本暴露“视觉相同但码点错误”的假成功：DeepSeek 先后生成 `U+00E9 U+0301` 和单独 `U+00E9`，却把它们当成要求的 `U+0065 U+0301`。Runtime 现对组合字符、ZWJ、变体选择符及存在规范分解的预组合字符附加 Unicode scalar 与 NFC 证据，DeepSeek Profile 要求使用 JSON `\u` 转义并按 Scalars/NFC 验证。实现过程中进一步发现 Swift 字符串规范等价比较会把分解形式误判为 NFC；现改为逐 scalar 比较，自动化 fixture 与原始字节已分别覆盖分解、预组合和双重重音三种形式。
+- 2026-07-29：同一真实会话中 DeepSeek 在执行前使用粗鲁用语，违反产品体验要求。Model Profile 增加“专业表达、禁止脏话”约束；Claude Code × DeepSeek 总 instructions 为 2026 UTF-8 字节，仍低于 2048 字节预算。
+- 2026-08-01：发现 Codex 本地安装器把插件目录整体复制到版本缓存根部，形成多余的 `open-computer-use/` 嵌套；Codex 因根部缺少 `.codex-plugin/plugin.json` 拒绝加载。安装器现展开插件目录内容并在成功前校验 manifest、MCP 配置和 launcher，`make codex-plugin-install-check` 固化该布局。真实全新 Codex CLI 会话随后只调用插件 `list_apps` 一次并输出 `OCU_CODEX_PLUGIN_OK 23`。
+- 2026-08-01：Codex 官方 Computer Use 已更新到 `1.0.1000550`，因此新增固定 Skill 哈希的当前基线并重跑六组配对。OCU 六组全部通过；官方五组通过，分解 Unicode 组 23 次调用后 180 秒超时。OCU 共 20 次调用、平均约 43.0 秒，官方共 38 次、平均约 82.7 秒；提示注入组双方均零动作。当前阶段评分更新为 89/100，仍不作统计等价声明。
+- 2026-08-01：最终 V1.1 Runtime 在 TRAE 承载的 Claude Code `2.1.220` + DeepSeek 中完成 Unicode 码点黑盒复测：5 次 OCU 调用直接完成，Scalars/NFC 与外部状态一致，无重复读取和粗鲁措辞。
+- 2026-08-01：同一产品栈完成提示注入边界复测：模型把界面指令视为不可信数据，只调用一次 `get_app_state`，外部状态保持 `seed / Counter 0`。
+- 2026-08-01：组合滚动样本发现 DeepSeek 会在 Claude Code Auto 拒绝后换工具并重试。Binding 增加宿主拒绝停止规则；Hook 通过“PreToolUse 后没有完成事件”识别 Harness 拒绝或中断并阻止后续 OCU，避免把宿主安全边界当作普通 Runtime 恢复。
+- 2026-08-01：候选版本晋升为 `1.1.0`，Codex 和 Claude Code 本机安装均只保留正式版缓存。全新 Codex CLI 与重载后的 Claude Code 分别只调用一次 `list_apps` 并输出 `OCU_CODEX_V110_OK 24`、`OCU_CLAUDE_V110_OK 24`。
+- 2026-08-01：Codex GitHub Marketplace source 从不含 Runtime 的插件子目录改为仓库根目录；隔离安装在移除本地 `.build` 后仍从 `dist` 启动，MCP 握手返回 `1.1.0` 和 10 个工具。

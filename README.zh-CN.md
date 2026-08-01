@@ -66,6 +66,13 @@ open-computer-use install-codex-mcp
 ocu install-codex-mcp
 ```
 
+也可以让 Codex 直接从本 GitHub 仓库安装完整的 V1.1 插件：
+
+```bash
+codex plugin marketplace add https://github.com/LeiZds/OCU
+codex plugin add open-computer-use@open-computer-use-local
+```
+
 也可以手动配置到你自己的客户端里：
 
 ```json
@@ -101,6 +108,8 @@ npx skills add LeiZds/OCU -g -a claude-code --skill open-computer-use -y
 claude plugin marketplace add https://github.com/LeiZds/OCU
 claude plugin install open-computer-use@ocu
 ```
+
+以上两条 GitHub 安装路径都会把对应宿主的 Skill、MCP、Adapter 和本仓库 Runtime 作为同一版本安装。macOS 首次运行仍必须完成系统要求的 Accessibility 与 Screen Recording 授权；这是操作系统安全限制，仓库链接无法代替用户授权。
 
 更新已有的全局安装，包括上面安装到 Codex 的那份：
 

@@ -149,6 +149,7 @@
 - 端到端 smoke：`./scripts/run-tool-smoke-tests.sh`（macOS 10-tool smoke + visual cursor idle smoke；脚本默认以 headless 模式启动内部 fixture，避免在用户桌面弹出测试窗口）
 - Agent 适配矩阵：`make adaptation-check`（验证 12 个 Host/Model 组合、自动 Binding、2048 UTF-8 字节指令预算、10-tool surface 与整数索引 Schema）
 - App Agent 单实例与 profile 隔离：`make app-agent-check`（先用 generic 连接启动权限 Agent，再由 4 个并发 Claude Code × DeepSeek 客户端复用；所有连接 profile 正确且最终只能留下 1 个权限 Agent，检查结束后清理测试进程）
+- Codex 插件安装布局：`make codex-plugin-install-check`（在临时 `CODEX_HOME` 安装当前插件，断言 manifest、MCP 配置、启动器和原生 payload 都位于 Codex 实际解析的版本根目录）
 - app 打包：`./scripts/build-open-computer-use-app.sh debug`
 - 权限 onboarding 端到端回归：`./scripts/run-permission-onboarding-e2e.sh`（需要当前 macOS 对被测 `open-computer-use` 已授予 Accessibility 与 Screen Recording；默认禁用 app-agent proxy 来测试当前 CLI 运行态，可用 `OPEN_COMPUTER_USE_E2E_CLI=/path/to/open-computer-use` 指定被测 CLI，或用 `OPEN_COMPUTER_USE_E2E_DISABLE_APP_AGENT_PROXY=0` 显式覆盖默认代理行为）
 - npm staging：`node ./scripts/npm/build-packages.mjs`

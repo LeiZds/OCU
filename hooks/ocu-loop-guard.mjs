@@ -67,6 +67,13 @@ function handlePreToolUse() {
     );
   }
 
+  const pending = state.calls.at(-1);
+  if (pending && !pending.resultHash) {
+    deny(
+      `OCU loop guard: the previous ${pending.tool} request never produced a completion event, which means the host may have denied or interrupted it. Stop OCU calls; do not switch tools or retry until the user gives a new instruction.`,
+    );
+  }
+
   const matching = completed.filter((call) => call.signature === signature);
   const latestCompleted = completed.at(-1);
   const appKey = tool === "get_app_state"

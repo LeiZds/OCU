@@ -21,8 +21,9 @@ Set `OPEN_COMPUTER_USE_BINDING` explicitly, or let the Runtime select a known co
 - When the user supplies an exact app name or verified identifier, call `get_app_state` on it instead of calling `list_apps`.
 - Select the exact tool name exposed by Claude Code; never retype or normalize its namespace separators.
 - Locate a target by stable ID, role, label, and value, but pass the current row's integer `element_index`; never pass the stable ID string as the argument.
-- Treat an OCU backend or permission error as terminal while the environment is unchanged: make no more OCU calls, report it once, and retry only after the user confirms a relevant change.
+- Treat a host denial, OCU backend error, or permission error as terminal while the environment is unchanged: do not switch tools or retry; report it once and wait for a new user instruction or confirmed environment change.
 - When the final verification reports no accessibility changes, use the preceding successful action evidence and stop. Do not request another identical state read.
+- For normalization-sensitive text, preserve the DeepSeek Profile's JSON `\u` escapes through Claude Code tool arguments and use scalar evidence instead of the rendered glyph.
 - Keep recovery within the DeepSeek failure budget and require current UI evidence before declaring completion.
 
 ## Promotion Rule

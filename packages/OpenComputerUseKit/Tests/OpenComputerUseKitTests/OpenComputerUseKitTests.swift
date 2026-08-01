@@ -749,8 +749,10 @@ final class OpenComputerUseKitTests: XCTestCase {
         XCTAssertTrue(adaptation.serverInstructions.contains("Claude Code adapter"))
         XCTAssertTrue(adaptation.serverInstructions.contains("DeepSeek profile"))
         XCTAssertTrue(adaptation.serverInstructions.contains("Claude Code+DeepSeek binding"))
-        XCTAssertTrue(adaptation.serverInstructions.contains("make no more OCU calls"))
-        XCTAssertTrue(adaptation.serverInstructions.contains("output it alone"))
+        XCTAssertTrue(adaptation.serverInstructions.contains("JSON \\u escapes"))
+        XCTAssertTrue(adaptation.serverInstructions.contains("Scalars/NFC"))
+        XCTAssertTrue(adaptation.serverInstructions.contains("no profanity"))
+        XCTAssertTrue(adaptation.serverInstructions.contains("no-change final read means stop"))
     }
 
     func testPermissionErrorsCarryAStopAndRetryGate() {
@@ -894,6 +896,26 @@ final class OpenComputerUseKitTests: XCTestCase {
                 1
             )
         }
+    }
+
+    func testUnicodeScalarEvidenceDistinguishesVisuallyEquivalentSequences() {
+        let decomposed = "Cafe\u{301}|"
+        let precomposed = "Caf\u{00E9}|"
+        let duplicatedAccent = "Caf\u{00E9}\u{301}|"
+
+        XCTAssertEqual(
+            unicodeScalarEvidenceSegment(decomposed),
+            " Unicode Scalars: [U+0043 U+0061 U+0066 U+0065 U+0301 U+007C]; NFC=no"
+        )
+        XCTAssertEqual(
+            unicodeScalarEvidenceSegment(precomposed),
+            " Unicode Scalars: [U+0043 U+0061 U+0066 U+00E9 U+007C]; NFC=yes"
+        )
+        XCTAssertEqual(
+            unicodeScalarEvidenceSegment(duplicatedAccent),
+            " Unicode Scalars: [U+0043 U+0061 U+0066 U+00E9 U+0301 U+007C]; NFC=yes"
+        )
+        XCTAssertEqual(unicodeScalarEvidenceSegment("plain ASCII"), "")
     }
 
     func testScrollRejectsInvalidDirectionWithOfficialMessage() {

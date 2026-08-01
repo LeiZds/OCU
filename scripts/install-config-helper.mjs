@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 function fail(message) {
@@ -16,6 +16,7 @@ function usage() {
   node ./scripts/install-config-helper.mjs opencode-mcp <primary-config-path> <secondary-config-path> <server-name> <command-name>
   node ./scripts/install-config-helper.mjs codex-plugin-version <plugin-manifest-path>
   node ./scripts/install-config-helper.mjs codex-plugin-config <config-path> <repo-root> <marketplace-name> <plugin-name>
+  node ./scripts/install-config-helper.mjs copy-dir-contents-into-dir <target-dir> <source-dir>
   node ./scripts/install-config-helper.mjs copy-into-dir <target-dir> <source-path> [<source-path> ...]
 `);
 }
@@ -475,6 +476,22 @@ function copyIntoDir(targetDir, sourcePaths) {
   }
 }
 
+function copyDirContentsIntoDir(targetDir, sourceDir) {
+  if (!existsSync(sourceDir)) {
+    fail(`Source directory does not exist: ${sourceDir}`);
+  }
+
+  const sourceEntries = readdirSync(sourceDir, { withFileTypes: true });
+  mkdirSync(targetDir, { recursive: true });
+
+  for (const entry of sourceEntries) {
+    const sourcePath = path.join(sourceDir, entry.name);
+    const destinationPath = path.join(targetDir, entry.name);
+    rmSync(destinationPath, { recursive: true, force: true });
+    cpSync(sourcePath, destinationPath, { recursive: true });
+  }
+}
+
 function main(argv) {
   const [command, ...args] = argv;
   switch (command) {
@@ -526,6 +543,13 @@ function main(argv) {
         process.exit(1);
       }
       copyIntoDir(args[0], args.slice(1));
+      return;
+    case "copy-dir-contents-into-dir":
+      if (args.length !== 2) {
+        usage();
+        process.exit(1);
+      }
+      copyDirContentsIntoDir(args[0], args[1]);
       return;
     default:
       usage();

@@ -1,0 +1,18 @@
+{
+  "product": "Codex official Computer Use",
+  "version": "1.0.1000550",
+  "skillPath": "~/.codex/plugins/cache/openai-bundled/computer-use/1.0.1000550/skills/computer-use/SKILL.md",
+  "skillSha256": "a52ede355c6637d05be9da5e3f19dbfd5f23fa5ec4c9513e3188bc8a57429c79",
+  "expectedTools": [
+    "click",
+    "drag",
+    "get_app_state",
+    "list_apps",
+    "perform_secondary_action",
+    "press_key",
+    "scroll",
+    "select_text",
+    "set_value",
+    "type_text"
+  ]
+}

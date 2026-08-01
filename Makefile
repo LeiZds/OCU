@@ -8,7 +8,7 @@ CLAUDE_COMMAND ?= claude
 CLAUDE_SETTINGS ?= ~/.claude/settings.json
 CLAUDE_MODEL ?= deepseek-v4-flash
 
-.PHONY: init build app test smoke stress agent-smoke baseline-v1 surface-parity adaptation-check app-agent-check codex-ab claude-harness check-docs check-repo ci release-package npm-build npm-publish new-history new-plan
+.PHONY: init build app test smoke stress agent-smoke baseline-v1 surface-parity adaptation-check app-agent-check codex-plugin-install-check codex-ab claude-harness check-docs check-repo ci release-package npm-build npm-publish new-history new-plan
 
 init:
 	@if [ -z "$(PROJECT)" ]; then echo "用法: make init PROJECT=项目名"; exit 1; fi
@@ -46,6 +46,9 @@ adaptation-check:
 app-agent-check:
 	./scripts/build-open-computer-use-app.sh debug
 	node ./scripts/check-app-agent-singleton.mjs
+
+codex-plugin-install-check:
+	./scripts/check-codex-plugin-install.sh
 
 codex-ab:
 	node ./scripts/run-codex-computer-use-ab.mjs --candidate=$(CANDIDATE) --scenario=$(SCENARIO) --repetitions=$(RUNS)

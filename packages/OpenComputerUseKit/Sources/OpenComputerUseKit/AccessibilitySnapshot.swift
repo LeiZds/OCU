@@ -376,7 +376,9 @@ enum SnapshotBuilder {
 
         for element in state.elements.sorted(by: { $0.index < $1.index }) {
             let titleSegment = element.title.map { " \($0)" } ?? ""
-            let valueSegment = element.value.map { " Value: \($0)" } ?? ""
+            let valueSegment = element.value.map {
+                " Value: \($0)\(unicodeScalarEvidenceSegment($0))"
+            } ?? ""
             let actionsSegment = element.actions.isEmpty ? "" : " Secondary Actions: \(element.actions.joined(separator: ", "))"
             let focusSegment = focusedIdentifier == element.identifier ? " (focused)" : ""
             lines.append("\(String(repeating: "    ", count: element.index == 0 ? 0 : 1))\(element.index) \(element.role)\(titleSegment)\(focusSegment) ID: \(element.identifier)\(valueSegment)\(actionsSegment) Frame: \(element.frame.cgRect.renderedLocalFrame)")
@@ -1312,7 +1314,7 @@ private func formattedValueSegment(for element: AXUIElement, roleText: String, t
         return " \(value)"
     }
 
-    return " Value: \(value)"
+    return " Value: \(value)\(unicodeScalarEvidenceSegment(value))"
 }
 
 func formattedLabelSegment(
@@ -1852,6 +1854,37 @@ func sanitizeText(_ value: String, textLimit: SnapshotTextLimit = .defaults) -> 
     }
 
     return collapsed
+}
+
+func unicodeScalarEvidenceSegment(_ value: String, maxScalars: Int = 64) -> String {
+    let scalars = Array(value.unicodeScalars)
+    let decomposedScalars = Array(value.decomposedStringWithCanonicalMapping.unicodeScalars)
+    let hasCanonicalDecomposition = decomposedScalars.count != scalars.count
+        || !zip(decomposedScalars, scalars).allSatisfy { decomposed, original in
+            decomposed.value == original.value
+        }
+    let needsScalarEvidence = scalars.contains { scalar in
+        CharacterSet.nonBaseCharacters.contains(scalar)
+            || scalar.value == 0x200D
+            || (0xFE00...0xFE0F).contains(scalar.value)
+            || (0xE0100...0xE01EF).contains(scalar.value)
+    } || hasCanonicalDecomposition
+    guard needsScalarEvidence else {
+        return ""
+    }
+
+    let renderedScalars = scalars.prefix(maxScalars).map { scalar in
+        String(format: "U+%04X", scalar.value)
+    }
+    let truncatedSuffix = scalars.count > maxScalars
+        ? " …(+\(scalars.count - maxScalars))"
+        : ""
+    let nfcScalars = Array(value.precomposedStringWithCanonicalMapping.unicodeScalars)
+    let isNFC = nfcScalars.count == scalars.count
+        && zip(nfcScalars, scalars).allSatisfy { normalized, original in
+            normalized.value == original.value
+        }
+    return " Unicode Scalars: [\(renderedScalars.joined(separator: " "))\(truncatedSuffix)]; NFC=\(isNFC ? "yes" : "no")"
 }
 
 private func flattenedRowTexts(

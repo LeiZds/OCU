@@ -82,7 +82,7 @@ public struct OpenComputerUseAgentAdaptation: Equatable, Sendable {
         case .gpt:
             return "GPT profile: use state → one action → evidence. Prefer the shortest semantic path; do not rediscover a known app."
         case .deepseek:
-            return "DeepSeek profile: visible plan = target, action, evidence; no narration. Preserve exact Unicode code points and normalization. After two unchanged failures, change once or stop. Output an exact final token alone."
+            return "DeepSeek profile: plan=target/action/evidence; no narration. Professional; no profanity. Exact Unicode: use JSON \\u escapes; verify Scalars/NFC, not glyphs. Two unchanged failures: change once or stop. Exact final token alone."
         }
     }
 
@@ -93,7 +93,7 @@ public struct OpenComputerUseAgentAdaptation: Equatable, Sendable {
         case .codexGPT:
             return "Codex+GPT binding: inspect non-empty action state directly; avoid a duplicate verification read."
         case .claudeCodeDeepSeek:
-            return "Claude Code+DeepSeek: exact app → get_app_state, not list_apps. Pass current integer index, never stable ID. Permission/backend error is terminal until the environment changes. A no-change final read means stop; never read again."
+            return "Claude Code+DeepSeek binding: exact app → get_app_state. Current integer index only. Host denial or permission/backend error: stop; never switch tool or retry. Final no-change read: stop."
         }
     }
 

@@ -204,7 +204,18 @@ mkdir -p "${codex_home}" "${plugin_cache_root}"
 rm -rf "${plugin_install_root}"
 mkdir -p "${plugin_install_root}"
 
-node "${config_helper}" copy-into-dir "${plugin_install_root}" "${plugin_source_root}" "${payload_path}"
+node "${config_helper}" copy-dir-contents-into-dir "${plugin_install_root}" "${plugin_source_root}"
+node "${config_helper}" copy-into-dir "${plugin_install_root}" "${payload_path}"
+
+for required_path in \
+  "${plugin_install_root}/.codex-plugin/plugin.json" \
+  "${plugin_install_root}/.mcp.json" \
+  "${plugin_install_root}/scripts/launch-open-computer-use.sh"; do
+  if [[ ! -f "${required_path}" ]]; then
+    echo "Codex plugin cache is incomplete: missing ${required_path}" >&2
+    exit 1
+  fi
+done
 
 node "${config_helper}" codex-plugin-config "${config_path}" "${repo_root}" "${marketplace_name}" "${plugin_name}"
 

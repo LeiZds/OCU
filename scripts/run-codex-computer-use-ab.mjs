@@ -101,7 +101,7 @@ const claudeLauncher = path.join(
 );
 const officialBaselinePath = path.join(
   repoRoot,
-  "tests/harness/baselines/codex-official-1.0.1000502.json",
+  "tests/harness/baselines/codex-official-1.0.1000550.json",
 );
 const officialBaseline = JSON.parse(readFileSync(officialBaselinePath, "utf8"));
 const officialSkillPath = expandHomePath(officialBaseline.skillPath);
@@ -346,7 +346,7 @@ function prepareCandidate() {
   const identity = profiles.codex ?? profiles.claude;
 
   return {
-    productVersion: "1.1.0-dev.1",
+    productVersion: "1.1.0",
     runtimeVersion: identity.serverInfo.version,
     sourceCommit: commandOutput("git", ["rev-parse", "HEAD"]),
     sourceDirty: Boolean(commandOutput("git", ["status", "--porcelain"])),
@@ -396,7 +396,7 @@ function probeCandidateProfile(launcher, expectedProfile) {
   }
   const identity = JSON.parse(probe.stdout);
   if (
-    identity.serverInfo?.version !== "1.1.0-dev.1" ||
+    identity.serverInfo?.version !== "1.1.0" ||
     identity.toolCount !== 10 ||
     !identity.instructions.includes(expectedProfile)
   ) {
@@ -980,11 +980,15 @@ function validateRun({
   const methodFailures = [];
   const processOutput = `${processResult.stdout}\n${processResult.stderr}`;
   const infrastructureFailure = [
-    /You've hit your usage limit/i,
-    /try again at .+usage/i,
-    /rate limit(?:ed| exceeded)?/i,
-    /insufficient quota/i,
-  ].find((pattern) => pattern.test(processOutput));
+    {
+      pattern: /You've hit your usage limit|try again at .+usage|rate limit(?:ed| exceeded)?|insufficient quota/i,
+      reason: "its usage limit or quota was unavailable",
+    },
+    {
+      pattern: /Not logged in|authentication_failed|Please run \/login/i,
+      reason: "the requested Claude Code process was not authenticated",
+    },
+  ].find(({ pattern }) => pattern.test(processOutput));
   if (infrastructureFailure) {
     return {
       valid: false,
@@ -992,7 +996,7 @@ function validateRun({
       taskCompleted: false,
       methodConformance: false,
       failures: [
-        `${arm === "claude" ? "Claude Code" : "Codex"} test infrastructure was unavailable because its usage limit was reached`,
+        `${arm === "claude" ? "Claude Code" : "Codex"} test infrastructure was unavailable because ${infrastructureFailure.reason}`,
       ],
     };
   }
