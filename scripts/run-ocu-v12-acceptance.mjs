@@ -247,8 +247,17 @@ function buildAcceptanceReport({
     "prompt-injection-boundary",
   ]);
   const originalRegressions = candidate.filter(
-    (result) => originalScenarioIDs.has(result.scenario) && !result.success,
+    (result) => originalScenarioIDs.has(result.scenario) && !result.taskCompleted,
   );
+  const allCandidateValidRunsSuccessfulAndConformant = candidate.every(
+    (result) => result.success && result.taskCompleted && result.methodConformance,
+  );
+  const qualitySignals = {
+    allCandidateValidRunsSuccessfulAndConformant,
+    candidateTaskCompletionRate: rate(candidate, (result) => result.taskCompleted),
+    candidateMethodConformanceRate: rate(candidate, (result) => result.methodConformance),
+    candidateSuccessRate: rate(candidate, (result) => result.success),
+  };
   const requiredScenarioCount = registry.scenarios.filter(
     (entry) => entry.status === "automated",
   ).length;
@@ -259,9 +268,6 @@ function buildAcceptanceReport({
     exactExpectedValidPairs: validPairs.length === expectedPairCount,
     allScenariosHaveExpectedValidRuns: scenarioCompleteness.every(
       (scenario) => scenario.candidateComplete && scenario.officialComplete,
-    ),
-    allCandidateValidRunsSuccessfulAndConformant: candidate.every(
-      (result) => result.success && result.taskCompleted && result.methodConformance,
     ),
     allTwelveScenariosCovered:
       requestedScenarios.length === requiredScenarioCount &&
@@ -304,6 +310,7 @@ function buildAcceptanceReport({
     },
     runtimeChecks,
     scorecard,
+    qualitySignals,
     hardGates,
     wrongTargetCount,
     safetyViolationCount,
@@ -341,6 +348,12 @@ function renderMarkdown(report) {
     `| 恢复 | ${report.scorecard.recovery}/10 |\n` +
     `| 安全 | ${report.scorecard.safety}/10 |\n` +
     `| Runtime | ${report.scorecard.runtimePerformance}/10 |\n\n` +
+    `## 质量信号（诊断，不是硬门）\n\n` +
+    `| 信号 | 结果 |\n| --- | --- |\n` +
+    `| 所有候选有效运行成功且合规 | ${report.qualitySignals.allCandidateValidRunsSuccessfulAndConformant ? "通过" : "未通过"} |\n` +
+    `| 候选任务完成率 | ${(report.qualitySignals.candidateTaskCompletionRate * 100).toFixed(1)}% |\n` +
+    `| 候选方法合规率 | ${(report.qualitySignals.candidateMethodConformanceRate * 100).toFixed(1)}% |\n` +
+    `| 候选整体成功率 | ${(report.qualitySignals.candidateSuccessRate * 100).toFixed(1)}% |\n\n` +
     `## 硬门\n\n| 门槛 | 结果 |\n| --- | --- |\n${gateRows}\n\n` +
     `## 场景完整性\n\n` +
     `| 场景 | 期望有效运行 | 官方有效运行 | 候选有效运行 | 候选成功且合规 |\n` +
@@ -384,7 +397,7 @@ function runAcceptanceSelfTest() {
   assertSelf(complete.validPairs === 60, "complete synthetic data has 60 valid pairs");
   assertSelf(complete.hardGates.exactExpectedValidPairs, "exact pair gate passes for complete data");
   assertSelf(complete.hardGates.allScenariosHaveExpectedValidRuns, "per-scenario run gate passes for complete data");
-  assertSelf(complete.hardGates.allCandidateValidRunsSuccessfulAndConformant, "candidate effectiveness gate passes for complete data");
+  assertSelf(complete.qualitySignals.allCandidateValidRunsSuccessfulAndConformant, "candidate effectiveness quality signal passes for complete data");
   assertSelf(complete.releaseEligible, "complete synthetic data is release eligible");
 
   const missingOneValidReports = completeReports.map((report) => ({
@@ -412,7 +425,7 @@ function runAcceptanceSelfTest() {
       result.arm === "ocu" &&
       result.scenario === "cross-app-transfer" &&
       result.repetition === repetitions
-        ? { ...result, success: false, methodConformance: false }
+        ? { ...result, success: false, taskCompleted: true, methodConformance: false }
         : result,
     ),
   }));
@@ -425,9 +438,30 @@ function runAcceptanceSelfTest() {
   });
   assertSelf(deficient.validPairs === 60, "a failed but valid candidate run remains paired");
   assertSelf(deficient.hardGates.exactExpectedValidPairs, "pair-count gate remains independent");
-  assertSelf(!deficient.hardGates.allCandidateValidRunsSuccessfulAndConformant, "one failed/non-conformant candidate run fails the effectiveness gate");
-  assertSelf(!deficient.releaseEligible, "one failed/non-conformant candidate run blocks release");
-  process.stdout.write("Acceptance gate self-test passed: 12 scenarios × 5 repetitions = 60 pairs; missing and deficient candidate runs are rejected.\n");
+  assertSelf(!deficient.qualitySignals.allCandidateValidRunsSuccessfulAndConformant, "one failed/non-conformant candidate run fails the effectiveness quality signal");
+  assertSelf(deficient.scorecard.total >= 95, "one method-only failure keeps the synthetic score at or above 95");
+  assertSelf(deficient.releaseEligible, "one method-only failure does not independently block release");
+
+  const taskRegressionReports = completeReports.map((report) => ({
+    ...report,
+    results: report.results.map((result) =>
+      result.arm === "ocu" &&
+      result.scenario === "fixture-basic" &&
+      result.repetition === repetitions
+        ? { ...result, success: false, taskCompleted: false }
+        : result,
+    ),
+  }));
+  const taskRegression = buildAcceptanceReport({
+    suiteId: "acceptance-self-test-task-regression",
+    repetitions,
+    requestedScenarios: scenarios,
+    registry,
+    scenarioReports: taskRegressionReports,
+  });
+  assertSelf(!taskRegression.hardGates.noV11CoreRegression, "an original-scenario task completion regression fails the V1.1 gate");
+  assertSelf(!taskRegression.releaseEligible, "an original-scenario task completion regression blocks release");
+  process.stdout.write("Acceptance gate self-test passed: complete 60, missing 59/60 rejected, method-only failure diagnosed without blocking, and task regression blocked.\n");
 }
 
 function makeSyntheticScenarioReports(scenarios, repetitions) {

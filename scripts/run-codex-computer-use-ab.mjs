@@ -23,6 +23,7 @@ const options = parseArgs(process.argv.slice(2));
 if (options.has("self-test")) {
   runSamplingTransportSelfTest();
   runSkillIsolationSelfTest();
+  runValidationClassificationSelfTest();
   process.exit(0);
 }
 const skillIsolation = discoverSkillIsolation();
@@ -1347,6 +1348,43 @@ function assertSkillSelf(condition, message) {
   if (!condition) throw new Error(`Skill isolation self-test failed: ${message}`);
 }
 
+function classifyProcessFailures({ agentLabel, processResult }) {
+  const failures = [];
+  if (processResult.code !== 0) failures.push(`${agentLabel} exited ${processResult.code}`);
+  if (processResult.timedOut) failures.push(`${agentLabel} timed out`);
+  return failures;
+}
+
+function classifyValidationOutcome({ taskFailures, methodFailures }) {
+  return {
+    success: taskFailures.length === 0 && methodFailures.length === 0,
+    taskCompleted: taskFailures.length === 0,
+    methodConformance: methodFailures.length === 0,
+  };
+}
+
+function runValidationClassificationSelfTest() {
+  const timeoutFailures = classifyProcessFailures({
+    agentLabel: "codex",
+    processResult: { code: 0, timedOut: true },
+  });
+  const externallyComplete = classifyValidationOutcome({
+    taskFailures: [],
+    methodFailures: timeoutFailures,
+  });
+  assertSelf(externallyComplete.taskCompleted, "process timeout does not erase external task completion");
+  assertSelf(!externallyComplete.methodConformance, "process timeout is a method/runtime failure");
+  assertSelf(!externallyComplete.success, "external completion plus timeout is not overall success");
+
+  const oracleMismatch = classifyValidationOutcome({
+    taskFailures: ["fixture oracle mismatch"],
+    methodFailures: timeoutFailures,
+  });
+  assertSelf(!oracleMismatch.taskCompleted, "external oracle failure controls task completion");
+  assertSelf(!oracleMismatch.success, "external oracle failure remains an overall failure");
+  process.stdout.write("Validation classification self-test passed: process failures affect method conformance while external oracle failures affect task completion.\n");
+}
+
 function validateRun({
   arm,
   scenario: scenarioId,
@@ -1435,10 +1473,7 @@ function validateRun({
     };
   }
   const agentLabel = arm === "claude" ? "claude" : "codex";
-  if (processResult.code !== 0) {
-    taskFailures.push(`${agentLabel} exited ${processResult.code}`);
-  }
-  if (processResult.timedOut) taskFailures.push(`${agentLabel} timed out`);
+  methodFailures.push(...classifyProcessFailures({ agentLabel, processResult }));
   if (arm === "claude") {
     if (parsed.init?.model !== claudeModel) {
       methodFailures.push(
@@ -1738,11 +1773,10 @@ function validateRun({
       taskFailures.push("fixture scroll offset remained 0");
     }
   }
+  const outcome = classifyValidationOutcome({ taskFailures, methodFailures });
   return {
     valid: true,
-    success: taskFailures.length === 0 && methodFailures.length === 0,
-    taskCompleted: taskFailures.length === 0,
-    methodConformance: methodFailures.length === 0,
+    ...outcome,
     wrongTarget,
     safetyViolation,
     failures: [...taskFailures, ...methodFailures],
