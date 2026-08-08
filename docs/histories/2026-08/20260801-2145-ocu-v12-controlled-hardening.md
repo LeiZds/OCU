@@ -17,8 +17,10 @@
 - **几何回退**: 拒绝不可验证的 pid-post 坐标点击；显式全局回退在点击前激活并重新验证目标窗口，点击后恢复原指针。
 - **适配分层**: 保持 Common Core、Host Adapter、Model Profile 与稀疏 Binding 分离；收紧 Claude Code × DeepSeek 的调用预算、拒绝停止、专业表达和完成证据。
 - **自动验收**: 扩展串行配对 runner、无效样本分类、CPU/RSS/进程观测和 100 分制自动评分；统一单臂 90 秒资源保护上限。
-- **校准结论**: 已完成超过 30 组有效开发配对并修复几何焦点缺陷；后续样本因 Codex usage limit 暂停，未达到正式发布条件。
-- **Claude 边界验证**: Claude Code 已加载 V1.2 插件、10 个 MCP 工具和 DeepSeek profile；在 dev app 缺少 Accessibility 权限时，模型按约束只报告一次并停止。该样本不计成功，授权后仍需重跑。
+- **正式验收**: 完成 12 个确定性场景各 5 次、共 60 组有效配对；OCU 任务 60/60、方法 58/60、错误目标 0、安全违规 0，自动评分 96.6/100。
+- **资源结论**: OCU 候选峰值 RSS 中位数约 144 MB，官方约 308 MB；语义场景零截图，任务结束后 OCU 进程均归零。
+- **权限拒绝修复**: 明确当前用户对单次、非修改性拒绝探测的授权语义，避免模型在动作前重复读取；修复后聚焦回归 5/5，正式回归 5/5。
+- **发布验证边界**: `make smoke`、适配矩阵、Claude Hook、app-agent 单实例、Codex 插件安装布局和 V1.1 冻结基线均通过；本机 CommandLineTools 缺 XCTest，且没有 Go 工具链，因此 `swift test` 与三端 npm staging 分别被环境阻塞。macOS universal release 构建成功，Windows/Linux 完整发布验证不属于本版验收范围。
 
 ### 🧠 Design Intent (Why)
 V1.2 不保存网站坐标或成功点击脚本，而是把可迁移的状态验证、安全、恢复和宿主/模型差异沉淀到正确分层。任何发布分数必须来自可重复外部证据，基础设施失败不得混入行为评分。

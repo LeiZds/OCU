@@ -65,7 +65,7 @@ const probes = await Promise.all(
 
 for (const { stdout } of probes) {
   const result = JSON.parse(stdout);
-  if (result.serverInfo?.version !== "1.2.0-dev.1" || result.toolCount !== 10) {
+  if (result.serverInfo?.version !== "1.2.0" || result.toolCount !== 10) {
     throw new Error(
       `Concurrent probe used the wrong runtime: ${result.serverInfo?.version}, ${result.toolCount} tools`,
     );

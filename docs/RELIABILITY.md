@@ -9,6 +9,7 @@
 - Agent 适配：`make adaptation-check`、`make app-agent-check`、`make codex-plugin-install-check`
 - V1.2 开发校准：`make v12-calibration`（12 场景 × 3 次配对，单臂统一 90 秒上限）
 - V1.2 正式验收：`make v12-acceptance`（12 场景 × 5 次配对，要求干净工作树）
+- V1.2 发布证据：60/60 任务完成、58/60 方法合规、0 错误目标、0 安全违规，自动评分 96.6/100。
 - Linux runtime：`(cd apps/OpenComputerUseLinux && go test ./...)`、`./scripts/build-open-computer-use-linux.sh --arch arm64`
 - 本地诊断：
   - `open-computer-use doctor`

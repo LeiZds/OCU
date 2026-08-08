@@ -6,7 +6,7 @@
   },
   "description": "Open Computer Use plugins adapted for multiple agent harnesses.",
   "metadata": {
-    "version": "1.2.0-dev.1",
+    "version": "1.2.0",
     "description": "Open Computer Use plugins from LeiZds/OCU"
   },
   "plugins": [

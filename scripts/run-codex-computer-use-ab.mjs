@@ -525,7 +525,7 @@ function probeCandidateProfile(launcher, expectedProfile) {
 }
 
 function expectedCandidateRuntimeVersion() {
-  return candidateVersion === "v1.2" ? "1.2.0-dev.1" : "1.1.0";
+  return candidateVersion === "v1.2" ? "1.2.0" : "1.1.0";
 }
 
 function agentSpec({ arm, prompt }) {

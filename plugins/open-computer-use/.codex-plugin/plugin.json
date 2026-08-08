@@ -1,6 +1,6 @@
 {
   "name": "open-computer-use",
-  "version": "1.2.0-dev.1",
+  "version": "1.2.0",
   "description": "Open-source Computer Use with a shared Runtime, Host Adapters, Model Profiles, and sparse Bindings.",
   "author": {
     "name": "Leo",

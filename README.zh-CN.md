@@ -15,8 +15,9 @@
 
 这个定制版本基于
 [iFurySt/open-codex-computer-use](https://github.com/iFurySt/open-codex-computer-use)，
-继续保留原项目的 MIT 许可证和署名。当前仓库的 V1.1 在此基础上增加了
-Runtime、Host Adapter、Model Profile 和 Binding 的分层适配架构。原项目受
+继续保留原项目的 MIT 许可证和署名。当前仓库的 V1.2 在此基础上增加了
+Runtime、Host Adapter、Model Profile 和 Binding 的分层适配架构，以及确定性的状态、
+窗口身份、有限恢复、安全与几何验证。原项目受
 OpenAI [Codex Computer Use](https://openai.com/index/codex-for-almost-everything/)
 启发。
 
@@ -66,7 +67,7 @@ open-computer-use install-codex-mcp
 ocu install-codex-mcp
 ```
 
-也可以让 Codex 直接从本 GitHub 仓库安装完整的 V1.1 插件：
+也可以让 Codex 直接从本 GitHub 仓库安装完整的 V1.2 插件：
 
 ```bash
 codex plugin marketplace add https://github.com/LeiZds/OCU
@@ -101,7 +102,7 @@ npx skills ls -g -a codex | rg 'open-computer-use'
 npx skills add LeiZds/OCU -g -a claude-code --skill open-computer-use -y
 ```
 
-直接从本 GitHub 仓库安装完整的 V1.1 Claude Code 插件
+直接从本 GitHub 仓库安装完整的 V1.2 Claude Code 插件
 （包含 Skill、MCP、Host Adapter Hook 和模型 Profile）：
 
 ```bash
@@ -155,7 +156,7 @@ open-computer-use call --calls-file examples/textedit-overlay-seq.json --sleep 0
 # 检查权限；只有缺失时才会拉起引导，已全部授权则只打印状态并退出
 open-computer-use doctor
 
-# 在隔离配置中回归 Claude Code Harness + 目标模型 + V1.1 插件。
+# 在隔离配置中回归 Claude Code Harness + 目标模型 + V1.2 插件。
 # Claude Code 2.1.218 的 --bare 会让 print 模式不注入插件 MCP，因此这里不要加 --bare。
 make claude-harness SCENARIO=list-apps CLAUDE_COMMAND=/path/to/claude CLAUDE_MODEL=deepseek-v4-flash
 make claude-harness SCENARIO=fixture-basic CLAUDE_COMMAND=/path/to/claude CLAUDE_MODEL=deepseek-v4-flash

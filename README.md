@@ -15,8 +15,9 @@
 
 This customized distribution is based on
 [iFurySt/open-codex-computer-use](https://github.com/iFurySt/open-codex-computer-use)
-and retains its MIT license and attribution. V1.1 adds the layered Runtime,
-Host Adapter, Model Profile, and Binding architecture used by this repository.
+and retains its MIT license and attribution. V1.2 adds the layered Runtime,
+Host Adapter, Model Profile, and Binding architecture, plus deterministic state,
+window identity, bounded recovery, safety, and geometry validation.
 The upstream project was inspired by OpenAI's
 [Codex Computer Use](https://openai.com/index/codex-for-almost-everything/).
 
@@ -66,7 +67,7 @@ Before using it, install it into your agent:
 open-computer-use install-codex-mcp
 ```
 
-Or install the complete V1.1 Codex plugin directly from this GitHub repository:
+Or install the complete V1.2 Codex plugin directly from this GitHub repository:
 
 ```bash
 codex plugin marketplace add https://github.com/LeiZds/OCU
@@ -102,7 +103,7 @@ Install for Claude Code:
 npx skills add LeiZds/OCU -g -a claude-code --skill open-computer-use -y
 ```
 
-Install the complete V1.1 Claude Code plugin directly from this GitHub repository
+Install the complete V1.2 Claude Code plugin directly from this GitHub repository
 (Skill, MCP server, Host Adapter hooks, and model profile):
 
 ```bash
@@ -171,7 +172,7 @@ node ./scripts/run-agent-smoke-tests.mjs --agents=hermes --hermes-provider=anthr
 node ./scripts/run-agent-smoke-tests.mjs --scenario=fixture --agents=hermes --hermes-provider=anthropic --hermes-model=claude-opus-4-20250514
 node ./scripts/run-agent-smoke-tests.mjs --scenario=fixture-full --agents=hermes --hermes-provider=anthropic --hermes-model=claude-opus-4-20250514 --hermes-max-turns=12
 
-# Run the isolated Claude Code Harness + model + V1.1 plugin regression.
+# Run the isolated Claude Code Harness + model + V1.2 plugin regression.
 # Do not add --bare: Claude Code 2.1.218 omits plugin MCP tools in print mode under --bare.
 make claude-harness SCENARIO=list-apps CLAUDE_COMMAND=/path/to/claude CLAUDE_MODEL=deepseek-v4-flash
 make claude-harness SCENARIO=fixture-basic CLAUDE_COMMAND=/path/to/claude CLAUDE_MODEL=deepseek-v4-flash
