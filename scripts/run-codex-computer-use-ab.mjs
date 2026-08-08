@@ -18,6 +18,10 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.dirname(scriptDir);
 const options = parseArgs(process.argv.slice(2));
+if (options.has("self-test")) {
+  runSamplingTransportSelfTest();
+  process.exit(0);
+}
 const scenario = options.get("scenario") ?? "list-apps";
 const repetitions = positiveInteger(options.get("repetitions") ?? "1", "repetitions");
 const timeoutMs = positiveInteger(options.get("timeout-ms") ?? "180000", "timeout-ms");
@@ -1122,6 +1126,65 @@ function claudeToolResultImageBytes(content) {
     );
 }
 
+function classifySamplingTransportDisconnect({ processResult, parsed }) {
+  const stderr = String(processResult?.stderr ?? "");
+  const hasDisconnectEvidence =
+    /(?:responses_retry|sampling_error)[^\n]*(?:stream disconnected|disconnected before completion)|stream disconnected before completion/i.test(
+      stderr,
+    );
+  const hasNoActionableResponse =
+    processResult?.timedOut === true &&
+    Array.isArray(parsed?.toolCalls) &&
+    parsed.toolCalls.length === 0 &&
+    typeof parsed?.finalText === "string" &&
+    parsed.finalText.trim() === "";
+  if (!hasDisconnectEvidence || !hasNoActionableResponse) return null;
+  return {
+    infrastructureInvalid: true,
+    reason: "sampling transport disconnected before first actionable response",
+  };
+}
+
+function runSamplingTransportSelfTest() {
+  const disconnectedStderr =
+    "responses_retry: stream disconnected ... sampling_error=stream disconnected before completion";
+  const noOutputTimeout = {
+    timedOut: true,
+    stderr: disconnectedStderr,
+  };
+  const invalid = classifySamplingTransportDisconnect({
+    processResult: noOutputTimeout,
+    parsed: { toolCalls: [], finalText: "" },
+  });
+  assertSelf(invalid?.infrastructureInvalid === true, "disconnect + timeout + no output is infrastructure-invalid");
+  assertSelf(
+    invalid?.reason === "sampling transport disconnected before first actionable response",
+    "disconnect classification has the retry reason",
+  );
+
+  const withTool = classifySamplingTransportDisconnect({
+    processResult: noOutputTimeout,
+    parsed: { toolCalls: ["get_app_state"], finalText: "" },
+  });
+  assertSelf(withTool === null, "a later tool call is not invalidated by a disconnect warning");
+  const withFinalText = classifySamplingTransportDisconnect({
+    processResult: noOutputTimeout,
+    parsed: { toolCalls: [], finalText: "AB-FIXTURE-01" },
+  });
+  assertSelf(withFinalText === null, "a later final response is not invalidated by a disconnect warning");
+
+  const ordinaryTimeout = classifySamplingTransportDisconnect({
+    processResult: { timedOut: true, stderr: "codex timed out without a transport warning" },
+    parsed: { toolCalls: [], finalText: "" },
+  });
+  assertSelf(ordinaryTimeout === null, "an ordinary no-output timeout keeps fail semantics");
+  process.stdout.write("Sampling transport self-test passed: only a disconnected no-output timeout is infrastructure-invalid.\n");
+}
+
+function assertSelf(condition, message) {
+  if (!condition) throw new Error(`Sampling transport self-test failed: ${message}`);
+}
+
 function validateRun({
   arm,
   scenario: scenarioId,
@@ -1159,6 +1222,19 @@ function validateRun({
       failures: [
         `${arm === "claude" ? "Claude Code" : "Codex"} test infrastructure was unavailable because ${infrastructureFailure.reason}`,
       ],
+    };
+  }
+  const samplingTransportFailure = classifySamplingTransportDisconnect({
+    processResult,
+    parsed,
+  });
+  if (samplingTransportFailure) {
+    return {
+      valid: false,
+      success: false,
+      taskCompleted: false,
+      methodConformance: false,
+      failures: [samplingTransportFailure.reason],
     };
   }
   if (scenarioId !== "list-apps") {
