@@ -20,6 +20,7 @@ if (options.has("self-test")) {
 const repetitions = positiveInteger(options.get("repetitions") ?? "5", "repetitions");
 const timeoutMs = positiveInteger(options.get("timeout-ms") ?? "90000", "timeout-ms");
 const allowDirty = options.get("allow-dirty") === "true";
+const scoreExisting = options.get("score-existing") === "true";
 const registry = JSON.parse(
   readFileSync(
     path.join(repoRoot, "tests/harness/scenarios/codex-computer-use-ab.json"),
@@ -54,6 +55,19 @@ mkdirSync(suiteDirectory, { recursive: true });
 const scenarioReports = [];
 for (const scenario of scenarios) {
   const scenarioRunId = `${suiteId}-${scenario}`;
+  const reportPath = path.join(
+    repoRoot,
+    "artifacts/harness-ab/runs",
+    scenarioRunId,
+    "summary.json",
+  );
+  if (scoreExisting) {
+    if (!existsSync(reportPath)) {
+      fail(`Existing scenario report is missing for ${scenario}: ${reportPath}`);
+    }
+    scenarioReports.push(JSON.parse(readFileSync(reportPath, "utf8")));
+    continue;
+  }
   const args = [
     path.join(scriptDir, "run-codex-computer-use-ab.mjs"),
     `--scenario=${scenario}`,
@@ -71,12 +85,6 @@ for (const scenario of scenarios) {
     cwd: repoRoot,
     stdio: "inherit",
   });
-  const reportPath = path.join(
-    repoRoot,
-    "artifacts/harness-ab/runs",
-    scenarioRunId,
-    "summary.json",
-  );
   if (!existsSync(reportPath)) {
     fail(`Scenario runner produced no report for ${scenario} (exit ${result.status}).`);
   }
@@ -89,6 +97,7 @@ const acceptance = buildAcceptanceReport({
   requestedScenarios: scenarios,
   registry,
   scenarioReports,
+  scoreExisting,
 });
 const jsonPath = path.join(suiteDirectory, "acceptance.json");
 const markdownPath = path.join(suiteDirectory, "acceptance.md");
@@ -105,6 +114,7 @@ function buildAcceptanceReport({
   requestedScenarios,
   registry,
   scenarioReports,
+  scoreExisting = false,
 }) {
   const results = scenarioReports.flatMap((report) => report.results);
   const candidate = results.filter((result) => result.arm === "ocu" && result.valid);
@@ -218,10 +228,8 @@ function buildAcceptanceReport({
       Number.isFinite(candidateMedianRSS) &&
       Number.isFinite(officialMedianRSS) &&
       candidateMedianRSS <= officialMedianRSS * 1.2,
-    cleanProcessExit: candidate.every(
-      (result) =>
-        result.exitCode === 0 &&
-        (result.resourceUsage?.postTaskOcuProcessCount ?? 0) === 0,
+    cleanOCUProcessExit: candidate.every(
+      (result) => (result.resourceUsage?.postTaskOcuProcessCount ?? 0) === 0,
     ),
   };
   const runtimePerformance = Object.values(runtimeChecks).filter(Boolean).length * 2;
@@ -269,6 +277,12 @@ function buildAcceptanceReport({
     (entry) => entry.status === "automated",
   ).length;
   const expectedPairCount = requestedScenarios.length * repetitions;
+  const scenarioSourceCommits = [...new Set(
+    scenarioReports.map((report) => report.sourceCommit).filter(Boolean),
+  )];
+  const allScenarioReportsSameCleanSource =
+    scenarioSourceCommits.length === 1 &&
+    scenarioReports.every((report) => report.sourceDirty === false);
   const hardGates = {
     scoreAtLeast95: scorecard.total >= 95,
     taskSuccessAtLeast34: scorecard.taskSuccess >= 34,
@@ -281,6 +295,7 @@ function buildAcceptanceReport({
       requestedScenarios.length === requiredScenarioCount &&
       new Set(candidate.map((result) => result.scenario)).size === requiredScenarioCount &&
       scenarioCompleteness.length === requiredScenarioCount,
+    allScenarioReportsSameCleanSource,
     zeroWrongTargets: wrongTargetCount === 0,
     zeroSafetyViolations: safetyViolationCount === 0,
     noV11CoreRegression: originalCoreTaskCompletionRate >= v11TaskBaselineRate,
@@ -290,6 +305,10 @@ function buildAcceptanceReport({
     schemaVersion: 1,
     suiteId,
     createdAt: new Date().toISOString(),
+    scoringMode: scoreExisting ? "existing-clean-reports" : "fresh-run",
+    scenarioSourceCommit: scenarioSourceCommits.length === 1
+      ? scenarioSourceCommits[0]
+      : null,
     candidate: "OCU V1.2 candidate",
     control: "Codex official Computer Use 1.0.1000550 normalized to 100",
     hypothesis: registry.hypothesis,
@@ -450,6 +469,26 @@ function runAcceptanceSelfTest() {
   assertSelf(deficient.scorecard.total >= 95, "one method-only failure keeps the synthetic score at or above 95");
   assertSelf(deficient.releaseEligible, "one method-only failure does not independently block release");
 
+  const completedHostTimeoutReports = completeReports.map((report) => ({
+    ...report,
+    results: report.results.map((result) =>
+      result.arm === "ocu" &&
+      result.scenario === "select-text" &&
+      result.repetition === repetitions
+        ? { ...result, success: false, methodConformance: false, timedOut: true, exitCode: null }
+        : result,
+    ),
+  }));
+  const completedHostTimeout = buildAcceptanceReport({
+    suiteId: "acceptance-self-test-completed-host-timeout",
+    repetitions,
+    requestedScenarios: scenarios,
+    registry,
+    scenarioReports: completedHostTimeoutReports,
+  });
+  assertSelf(!completedHostTimeout.runtimeChecks.noCandidateTimeouts, "a completed host timeout loses the timeout Runtime check");
+  assertSelf(completedHostTimeout.runtimeChecks.cleanOCUProcessExit, "a completed host timeout does not imply a leaked OCU process");
+
   const oneOriginalFailureReports = completeReports.map((report) => ({
     ...report,
     results: report.results.map((result) =>
@@ -516,6 +555,8 @@ function runAcceptanceSelfTest() {
 function makeSyntheticScenarioReports(scenarios, repetitions) {
   return scenarios.map((scenario) => ({
     scenario,
+    sourceCommit: "synthetic-clean-source",
+    sourceDirty: false,
     results: Array.from({ length: repetitions }, (_, index) => index + 1).flatMap((repetition) => [
       makeSyntheticResult("official", scenario, repetition),
       makeSyntheticResult("ocu", scenario, repetition),
