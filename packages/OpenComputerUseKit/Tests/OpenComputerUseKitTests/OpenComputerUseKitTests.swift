@@ -755,6 +755,18 @@ final class OpenComputerUseKitTests: XCTestCase {
         XCTAssertTrue(adaptation.serverInstructions.contains("no-change final read means stop"))
     }
 
+    func testCodexGPTAdaptationUsesLatestStateWithoutReassuranceRead() {
+        let adaptation = OpenComputerUseAgentAdaptation(environment: [
+            "OPEN_COMPUTER_USE_HOST_ADAPTER": "codex",
+            "OPEN_COMPUTER_USE_MODEL_PROFILE": "gpt",
+        ])
+
+        XCTAssertEqual(adaptation.binding, .codexGPT)
+        XCTAssertTrue(adaptation.serverInstructions.contains("latest state already exposes the requested target and current element index"))
+        XCTAssertTrue(adaptation.serverInstructions.contains("do not repeat the same state read for reassurance"))
+        XCTAssertTrue(adaptation.serverInstructions.contains("An action's returned state is current evidence"))
+    }
+
     func testPermissionErrorsCarryAStopAndRetryGate() {
         let error = ComputerUseError.permissionDenied("Accessibility permission is required.")
         let description = error.errorDescription ?? ""

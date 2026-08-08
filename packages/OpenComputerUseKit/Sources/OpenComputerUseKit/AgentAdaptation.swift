@@ -91,7 +91,7 @@ public struct OpenComputerUseAgentAdaptation: Equatable, Sendable {
         case .none:
             return ""
         case .codexGPT:
-            return "Codex+GPT binding: inspect non-empty action state directly; avoid a duplicate verification read."
+            return "Codex+GPT binding: inspect non-empty action state directly. When the latest state already exposes the requested target and current element index, choose one action; do not repeat the same state read for reassurance. An action's returned state is current evidence; avoid a duplicate verification read."
         case .claudeCodeDeepSeek:
             return "Claude Code+DeepSeek binding: exact app → state. Use only the current integer index. Host denial or permission/backend error: stop; never switch tool or retry. Final no-change read means stop."
         }
