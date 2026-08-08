@@ -7,7 +7,9 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -20,8 +22,10 @@ const repoRoot = path.dirname(scriptDir);
 const options = parseArgs(process.argv.slice(2));
 if (options.has("self-test")) {
   runSamplingTransportSelfTest();
+  runSkillIsolationSelfTest();
   process.exit(0);
 }
+const skillIsolation = discoverSkillIsolation();
 const scenario = options.get("scenario") ?? "list-apps";
 const repetitions = positiveInteger(options.get("repetitions") ?? "1", "repetitions");
 const timeoutMs = positiveInteger(options.get("timeout-ms") ?? "180000", "timeout-ms");
@@ -242,10 +246,16 @@ const report = {
     platform: process.platform,
     architecture: process.arch,
     configIsolation: {
-      official: `normal user config for node_repl; pinned Computer Use ${officialBaseline.version} wrapper path is supplied in the prompt`,
-      ocu: `--ignore-user-config plus only the ${candidateVersion} OCU MCP override`,
+      official: `normal user config with explicit global Skill isolation; pinned Computer Use ${officialBaseline.version} wrapper path is supplied in the prompt`,
+      ocu: `--ignore-user-config plus the ${candidateVersion} OCU MCP override and explicit global Skill isolation`,
       claude:
         "project-only setting sources plus the candidate plugin directory; --bare is intentionally excluded because Claude Code 2.1.218 omits plugin MCP tools from print-mode sessions under --bare",
+    },
+    skillIsolation: {
+      roots: skillIsolation.roots,
+      disabledPathCount: skillIsolation.disabledPaths.length,
+      features: skillIsolation.features,
+      strategy: skillIsolation.strategy,
     },
     claudeWorkspace: requestedArms.includes("claude")
       ? claudeWorkspace
@@ -294,6 +304,93 @@ function expandHomePath(value) {
   if (value === "~") return os.homedir();
   if (value.startsWith("~/")) return path.join(os.homedir(), value.slice(2));
   return value;
+}
+
+function defaultSkillRoots() {
+  return [
+    path.join(os.homedir(), ".agents", "skills"),
+    path.join(os.homedir(), ".codex", "skills"),
+  ];
+}
+
+function discoverSkillIsolation(roots = defaultSkillRoots()) {
+  const normalizedRoots = normalizePaths(roots.map((root) => path.resolve(root)));
+  const disabledPaths = discoverSkillFiles(normalizedRoots);
+  return {
+    roots: normalizedRoots,
+    disabledPaths,
+    configOverride: buildSkillsConfig(disabledPaths),
+    features: {
+      commonDisabled: ["apps", "remote_plugin", "skill_search"],
+      officialPlugins: "enabled",
+      ocuPlugins: "disabled",
+    },
+    strategy: "recursive SKILL.md discovery under the two global roots; one -c skills.config override; bundled official plugin root excluded",
+  };
+}
+
+function discoverSkillFiles(roots) {
+  const discovered = [];
+  const visit = (directory) => {
+    let entries;
+    try {
+      entries = readdirSync(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(entryPath);
+      } else if (entry.isFile() && entry.name === "SKILL.md") {
+        discovered.push(path.resolve(entryPath));
+      }
+    }
+  };
+  for (const root of normalizePaths(roots)) visit(root);
+  return normalizePaths(discovered);
+}
+
+function normalizePaths(values) {
+  return [...new Set(values.map((value) => String(value)))].sort(comparePaths);
+}
+
+function comparePaths(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function tomlBasicString(value) {
+  const escaped = String(value)
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/[\u0000-\u001f\u007f]/g, (character) =>
+      `\\u${character.codePointAt(0).toString(16).padStart(4, "0")}`,
+    );
+  return `"${escaped}"`;
+}
+
+function buildSkillsConfig(paths) {
+  const entries = normalizePaths(paths).map(
+    (skillPath) => `{path=${tomlBasicString(skillPath)},enabled=false}`,
+  );
+  return `skills.config=[${entries.join(",")}]`;
+}
+
+function codexIsolationArgs(arm, isolation) {
+  const args = [
+    "-c",
+    "features.apps=false",
+    "-c",
+    "features.remote_plugin=false",
+    "-c",
+    "features.skill_search=false",
+    "-c",
+    isolation.configOverride,
+  ];
+  if (arm === "ocu") args.push("-c", "features.plugins=false");
+  return args;
 }
 
 function prepareCandidate() {
@@ -501,6 +598,7 @@ function agentSpec({ arm, prompt }) {
       'mcp_servers.open-computer-use.args=["mcp"]',
     );
   }
+  args.push(...codexIsolationArgs(arm, skillIsolation));
   args.push(prompt);
   return { command: "codex", args, env: controlledGeometryEnvironment };
 }
@@ -1183,6 +1281,70 @@ function runSamplingTransportSelfTest() {
 
 function assertSelf(condition, message) {
   if (!condition) throw new Error(`Sampling transport self-test failed: ${message}`);
+}
+
+function runSkillIsolationSelfTest() {
+  const temporaryRoot = mkdtempSync(path.join(os.tmpdir(), "ocu-ab-skill-isolation-"));
+  try {
+    const agentsRoot = path.join(temporaryRoot, "agents", "skills");
+    const codexRoot = path.join(temporaryRoot, "codex", "skills");
+    mkdirSync(path.join(agentsRoot, "nested"), { recursive: true });
+    mkdirSync(path.join(agentsRoot, "ignored", "SKILL.md"), { recursive: true });
+    mkdirSync(path.join(codexRoot, "deep"), { recursive: true });
+    writeFileSync(path.join(agentsRoot, "SKILL.md"), "root");
+    writeFileSync(path.join(agentsRoot, "nested", "SKILL.md"), "nested");
+    writeFileSync(path.join(agentsRoot, "nested", "README.md"), "ignored");
+    writeFileSync(path.join(codexRoot, "deep", "SKILL.md"), "deep");
+
+    const discovered = discoverSkillFiles([agentsRoot, agentsRoot, codexRoot]);
+    const expected = normalizePaths([
+      path.join(agentsRoot, "SKILL.md"),
+      path.join(agentsRoot, "nested", "SKILL.md"),
+      path.join(codexRoot, "deep", "SKILL.md"),
+    ].map((skillPath) => path.resolve(skillPath)));
+    assertSkillSelf(
+      JSON.stringify(discovered) === JSON.stringify(expected),
+      "recursive discovery keeps only regular SKILL.md files and sorts/deduplicates paths",
+    );
+
+    const isolation = discoverSkillIsolation([agentsRoot, agentsRoot, codexRoot]);
+    assertSkillSelf(isolation.roots.length === 2, "duplicate roots are deduplicated");
+    assertSkillSelf(isolation.disabledPaths.length === 3, "metadata counts disabled paths without listing them");
+    assertSkillSelf(isolation.configOverride.startsWith("skills.config=[") && isolation.configOverride.endsWith("]"), "skills.config uses a TOML inline array");
+    const entries = isolation.configOverride.match(/\{path="(?:\\.|[^"\\])*",enabled=false\}/g) ?? [];
+    assertSkillSelf(entries.length === 3, "each discovered path becomes one disabled TOML entry");
+
+    const specialConfig = buildSkillsConfig([
+      `${temporaryRoot}/quote"slash\\line\nSKILL.md`,
+    ]);
+    assertSkillSelf(specialConfig.includes("\\\""), "TOML escapes double quotes");
+    assertSkillSelf(specialConfig.includes("\\\\"), "TOML escapes backslashes");
+    assertSkillSelf(specialConfig.includes("\\u000a"), "TOML escapes control characters");
+    assertSkillSelf(!specialConfig.includes("\n"), "TOML config contains no literal newline");
+    assertSkillSelf(
+      (/^skills\.config=\[(?:\{path="(?:\\.|[^"\\])*",enabled=false\}(?:,\{path="(?:\\.|[^"\\])*",enabled=false\})*)?\]$/).test(specialConfig),
+      "TOML config has a legal inline-array structure",
+    );
+
+    const syntheticIsolation = { configOverride: "skills.config=[]" };
+    const officialArgs = codexIsolationArgs("official", syntheticIsolation);
+    const ocuArgs = codexIsolationArgs("ocu", syntheticIsolation);
+    for (const feature of ["features.apps=false", "features.remote_plugin=false", "features.skill_search=false"]) {
+      assertSkillSelf(officialArgs.includes(feature), `official disables ${feature}`);
+      assertSkillSelf(ocuArgs.includes(feature), `OCU disables ${feature}`);
+    }
+    assertSkillSelf(!officialArgs.includes("features.plugins=false"), "official keeps plugins enabled");
+    assertSkillSelf(ocuArgs.includes("features.plugins=false"), "OCU disables plugins");
+    assertSkillSelf(officialArgs[officialArgs.indexOf(syntheticIsolation.configOverride) - 1] === "-c", "official receives one skills.config -c override");
+    assertSkillSelf(ocuArgs[ocuArgs.indexOf(syntheticIsolation.configOverride) - 1] === "-c", "OCU receives one skills.config -c override");
+    process.stdout.write("Skill isolation self-test passed: recursive discovery, TOML escaping, and arm feature policy are deterministic.\n");
+  } finally {
+    rmSync(temporaryRoot, { recursive: true, force: true });
+  }
+}
+
+function assertSkillSelf(condition, message) {
+  if (!condition) throw new Error(`Skill isolation self-test failed: ${message}`);
 }
 
 function validateRun({
