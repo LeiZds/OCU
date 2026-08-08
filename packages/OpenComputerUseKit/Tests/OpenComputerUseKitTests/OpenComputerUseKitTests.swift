@@ -762,9 +762,10 @@ final class OpenComputerUseKitTests: XCTestCase {
         ])
 
         XCTAssertEqual(adaptation.binding, .codexGPT)
-        XCTAssertTrue(adaptation.serverInstructions.contains("latest state already exposes the requested target and current element index"))
-        XCTAssertTrue(adaptation.serverInstructions.contains("do not repeat the same state read for reassurance"))
-        XCTAssertTrue(adaptation.serverInstructions.contains("An action's returned state is current evidence"))
+        XCTAssertTrue(adaptation.serverInstructions.contains("latest state exposes the requested target/current index"))
+        XCTAssertTrue(adaptation.serverInstructions.contains("never reread for reassurance"))
+        XCTAssertTrue(adaptation.serverInstructions.contains("Treat action-returned state as evidence"))
+        XCTAssertTrue(adaptation.serverInstructions.contains("one non-mutating permission-denial probe"))
     }
 
     func testPermissionErrorsCarryAStopAndRetryGate() {
